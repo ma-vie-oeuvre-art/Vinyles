@@ -141,6 +141,124 @@ footer a{color:var(--poussiere)}
 .legende .v .g{color:#8a7f70;font-size:.72rem;letter-spacing:.02em}
 .legende .rare{margin:.3rem 0 0;font-size:.68rem;letter-spacing:.08em;
   text-transform:uppercase;color:#a8683c}
+
+/* ── SÉLECTEUR DE VUE ────────────────────────────────────────
+   Cinq façons de regarder la même collection. Le mur trie,
+   le bac se feuillette, la constellation compare, le plein
+   cadre efface tout sauf l'image, la ligne du temps date. */
+.vues{display:flex;gap:0;margin:1.6rem 0 .2rem;border-bottom:1px solid #2B221B;
+  flex-wrap:wrap}
+.vues button{background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--poussiere);font-family:var(--mono);font-size:.7rem;
+  letter-spacing:.13em;text-transform:uppercase;padding:.7rem 1.1rem;
+  cursor:pointer;transition:color .2s,border-color .2s;margin-bottom:-1px}
+.vues button:hover{color:var(--papier)}
+.vues button[aria-pressed="true"]{color:var(--or);border-bottom-color:var(--or)}
+.vues button:focus-visible{outline:2px solid var(--or);outline-offset:-2px}
+
+/* ── LE BAC OUVERT ───────────────────────────────────────────
+   Le regard de quelqu'un accroupi devant sa caisse. Les
+   pochettes sont inclinées vers l'arrière et se recouvrent,
+   comme dans le bac. On les feuillette. */
+.bac{perspective:1400px;perspective-origin:50% 34%;height:min(66vh,560px);
+  position:relative;margin:2.2rem 0 0;touch-action:pan-y}
+.bac-piste{position:absolute;inset:0;transform-style:preserve-3d}
+.bac-p{position:absolute;left:50%;top:50%;width:min(52vw,330px);
+  aspect-ratio:1;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.7,.3,1),
+  opacity .5s,filter .5s;cursor:pointer;border:0;padding:0;background:none}
+.bac-p img{width:100%;height:100%;object-fit:cover;display:block;
+  box-shadow:0 24px 48px rgba(0,0,0,.75),0 2px 0 rgba(239,231,217,.07) inset}
+.bac-p .rien-p{width:100%;height:100%;background:var(--carton);
+  display:grid;place-items:center;color:var(--poussiere);
+  font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;text-align:center}
+.bac-fiche{position:absolute;left:0;right:0;bottom:-.5rem;text-align:center;
+  pointer-events:none}
+.bac-fiche .bt{font-family:var(--serif);font-size:1.45rem;color:var(--papier);
+  margin:0 0 .15rem;line-height:1.2}
+.bac-fiche .ba{color:var(--poussiere);margin:0 0 .35rem;font-size:.95rem}
+.bac-fiche .bk{font-family:var(--mono);font-size:.7rem;color:var(--or);
+  letter-spacing:.08em;margin:0}
+.bac-cmd{display:flex;align-items:center;justify-content:center;gap:1.4rem;
+  margin-top:1rem}
+.bac-cmd button{background:none;border:1px solid #33281F;color:var(--papier);
+  width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:1.1rem;
+  transition:border-color .2s,color .2s}
+.bac-cmd button:hover:not(:disabled){border-color:var(--or);color:var(--or)}
+.bac-cmd button:disabled{opacity:.25;cursor:default}
+.bac-cmd .rang{font-family:var(--mono);font-size:.75rem;color:var(--poussiere);
+  letter-spacing:.14em;min-width:8ch;text-align:center}
+.bac-aide{text-align:center;font-family:var(--mono);font-size:.62rem;
+  color:#6B6153;letter-spacing:.1em;margin:.9rem 0 0}
+
+/* ── PLEIN CADRE ─────────────────────────────────────────────
+   Aucun texte. La pochette a été dessinée pour être vue, pas
+   légendée. Le titre n'arrive qu'au survol. */
+.plein{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));
+  gap:0;margin:2rem 0 0;background:var(--sillon)}
+.plein button{position:relative;aspect-ratio:1;border:0;padding:0;
+  background:var(--carton);cursor:pointer;overflow:hidden;display:block}
+.plein img{width:100%;height:100%;object-fit:cover;display:block;
+  transition:transform .6s cubic-bezier(.2,.7,.3,1),filter .4s}
+.plein button:hover img,.plein button:focus-visible img{transform:scale(1.07)}
+.plein .sur{position:absolute;inset:0;background:linear-gradient(
+  to top,rgba(11,9,8,.94) 0%,rgba(11,9,8,.55) 45%,transparent 100%);
+  opacity:0;transition:opacity .3s;display:flex;flex-direction:column;
+  justify-content:flex-end;padding:.85rem;text-align:left}
+.plein button:hover .sur,.plein button:focus-visible .sur{opacity:1}
+.plein .sur b{font-family:var(--serif);font-size:.95rem;color:var(--papier);
+  font-weight:500;line-height:1.25}
+.plein .sur i{font-style:normal;font-family:var(--mono);font-size:.62rem;
+  color:var(--or);letter-spacing:.08em;margin-top:.3rem}
+
+/* ── CONSTELLATION ───────────────────────────────────────────
+   Chaque disque est un point. En abscisse l'année, en ordonnée
+   la tension du marché (recherché ÷ possédé). Le rayon suit le
+   prix suggéré. Ce qui monte est convoité, pas cher. */
+.ciel{margin:2rem 0 0;position:relative}
+.ciel svg{width:100%;height:min(62vh,520px);display:block;overflow:visible}
+.ciel .axe{stroke:#2B221B;stroke-width:1}
+.ciel .grad{fill:#6B6153;font-family:var(--mono);font-size:9px;
+  letter-spacing:.1em}
+.ciel .pt{cursor:pointer;transition:opacity .25s}
+.ciel .pt circle{transition:r .25s,stroke-width .2s}
+.ciel .pt:hover circle,.ciel .pt:focus-visible circle{stroke:var(--papier);
+  stroke-width:2}
+.ciel-info{position:absolute;pointer-events:none;background:var(--sillon);
+  border:1px solid #33281F;padding:.5rem .7rem;max-width:230px;opacity:0;
+  transition:opacity .18s;font-size:.78rem;line-height:1.35;z-index:5}
+.ciel-info b{display:block;font-family:var(--serif);color:var(--papier)}
+.ciel-info span{color:var(--poussiere);font-size:.72rem}
+.ciel-info em{display:block;font-style:normal;font-family:var(--mono);
+  font-size:.66rem;color:var(--or);letter-spacing:.06em;margin-top:.25rem}
+.ciel-lg{display:flex;flex-wrap:wrap;gap:.35rem 1.1rem;margin:1.1rem 0 0;
+  font-family:var(--mono);font-size:.63rem;letter-spacing:.07em;
+  color:var(--poussiere)}
+.ciel-lg i{font-style:normal;display:inline-flex;align-items:center;gap:.4rem}
+.ciel-lg i::before{content:'';width:9px;height:9px;border-radius:50%;
+  background:var(--pastille)}
+
+/* ── LIGNE DU TEMPS ──────────────────────────────────────────
+   Une colonne par année. La hauteur de la pile dit combien de
+   disques cette année a laissés dans la collection. */
+.temps{margin:2rem 0 0;overflow-x:auto;padding-bottom:1rem}
+.temps-piste{display:flex;align-items:flex-end;gap:3px;min-height:300px;
+  border-bottom:1px solid #2B221B;padding-bottom:0}
+.temps-col{display:flex;flex-direction:column-reverse;gap:2px;
+  flex:0 0 auto;width:34px}
+.temps-col button{width:34px;height:34px;border:0;padding:0;background:var(--carton);
+  cursor:pointer;display:block;overflow:hidden;transition:transform .2s}
+.temps-col button:hover,.temps-col button:focus-visible{transform:scale(1.35);
+  z-index:3;position:relative;box-shadow:0 6px 18px rgba(0,0,0,.7)}
+.temps-col img{width:100%;height:100%;object-fit:cover;display:block}
+.temps-an{font-family:var(--mono);font-size:.58rem;color:#6B6153;
+  writing-mode:vertical-rl;margin-top:.4rem;letter-spacing:.08em;height:42px}
+.temps-dec{border-left:1px solid #33281F;padding-left:6px;margin-left:3px}
+.temps-dec .temps-an{color:var(--or)}
+
+@media(prefers-reduced-motion:reduce){
+  .bac-p,.plein img,.temps-col button,.ciel .pt circle{transition:none!important}
+  .carte{animation:none!important}
+}
 </style>
 </head>
 <body>
@@ -171,10 +289,36 @@ footer a{color:var(--poussiere)}
 
   <div class="rangee"><span class="etiq">Bac</span><span id="bacs" style="display:contents"></span></div>
   <div class="rangee"><span class="etiq">Famille</span><span id="familles" style="display:contents"></span></div>
+  <nav class="vues" id="vues" aria-label="Façon de regarder la collection"></nav>
   <p class="compte" id="compte"></p>
   <p class="compte top" id="top"></p>
 
   <div class="mur" id="mur"></div>
+
+  <!-- Le bac ouvert : on feuillette, on ne parcourt pas. -->
+  <section id="vueBac" hidden>
+    <div class="bac"><div class="bac-piste" id="bacPiste"></div>
+      <div class="bac-fiche" id="bacFiche"></div></div>
+    <div class="bac-cmd">
+      <button id="bacPrec" aria-label="Disque précédent">‹</button>
+      <span class="rang" id="bacRang"></span>
+      <button id="bacSuiv" aria-label="Disque suivant">›</button>
+    </div>
+    <p class="bac-aide">Flèches du clavier, ou glisse. Clique la pochette de devant pour l'ouvrir.</p>
+  </section>
+
+  <!-- Plein cadre : la pochette seule, sans légende. -->
+  <div class="plein" id="vuePlein" hidden></div>
+
+  <!-- Constellation : année contre tension du marché. -->
+  <section class="ciel" id="vueCiel" hidden>
+    <svg id="cielSvg" role="img" aria-label="Nuage de points : année en abscisse, tension du marché en ordonnée"></svg>
+    <div class="ciel-info" id="cielInfo"></div>
+    <div class="ciel-lg" id="cielLg"></div>
+  </section>
+
+  <!-- Ligne du temps : une colonne par année. -->
+  <section class="temps" id="vueTemps" hidden><div class="temps-piste" id="tempsPiste"></div></section>
   <p class="rien" id="rien" hidden>Aucun disque ne correspond.<br>Efface la recherche ou relâche un filtre.</p>
 
   <footer>
@@ -299,10 +443,22 @@ function rendre(){
   dTop.innerHTML = top && liste.length>1
     ? 'Le plus coté : <strong>'+esc(top.t)+'</strong> — '+esc(top.a)+' · '+arg(top.m)
     : '';
+  document.getElementById('top').hidden = (vue==='plein');
   compte.textContent=liste.length+(liste.length>1?' disques':' disque')+
     (liste.length!==D.length?' sur '+D.length:'')+
     ' · '+arg(vSel)+' en prix suggérés VG+'+
     (sans?' · '+sans+' sans estimation':'');
+  // Aiguillage : cinq vues, une seule liste filtrée.
+  document.querySelectorAll('#mur,#vueBac,#vuePlein,#vueCiel,#vueTemps')
+    .forEach(el=>el.hidden = true);
+  const cible={mur:'mur',bac:'vueBac',plein:'vuePlein',
+               ciel:'vueCiel',temps:'vueTemps'}[vue];
+  document.getElementById(cible).hidden=false;
+  if(vue==='bac')   return rendreBac();
+  if(vue==='plein') return rendrePlein();
+  if(vue==='ciel')  return rendreCiel();
+  if(vue==='temps') return rendreTemps();
+
   liste.forEach((r,i)=>{
     const c=document.createElement('button');
     c.className='carte'; c.style.animationDelay=Math.min(i*14,500)+'ms';
@@ -322,6 +478,212 @@ function rendre(){
     mur.appendChild(c);
   });
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   LES QUATRE AUTRES VUES
+   Même liste filtrée, même fiche détaillée. Seul le regard change.
+   ═══════════════════════════════════════════════════════════════ */
+
+let vue='mur', bacIdx=0;
+
+const VUES=[
+  ['mur',   'Le mur'],
+  ['bac',   'Le bac ouvert'],
+  ['plein', 'Plein cadre'],
+  ['ciel',  'Constellation'],
+  ['temps', 'Ligne du temps'],
+];
+const barre=document.getElementById('vues');
+VUES.forEach(([id,nom])=>{
+  const b=document.createElement('button');
+  b.textContent=nom; b.dataset.v=id;
+  b.setAttribute('aria-pressed', String(id===vue));
+  b.onclick=()=>{ vue=id; bacIdx=0;
+    [...barre.children].forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.v===vue)));
+    rendre(); };
+  barre.appendChild(b);
+});
+
+const pochetteOu = (r,alt)=> r.th
+  ? '<img loading="lazy" src="'+r.th+'" alt="'+alt+'">'
+  : '<div class="rien-p">pochette<br>absente</div>';
+
+/* ── LE BAC OUVERT ────────────────────────────────────────────
+   Sept pochettes visibles : celle de devant, et six qui
+   s'enfoncent. L'inclinaison et l'ombre font le reste. */
+function rendreBac(){
+  const piste=document.getElementById('bacPiste');
+  const fiche=document.getElementById('bacFiche');
+  piste.innerHTML='';
+  if(!liste.length){ fiche.innerHTML=''; document.getElementById('bacRang').textContent=''; return; }
+  bacIdx=Math.max(0,Math.min(bacIdx,liste.length-1));
+
+  const VISIBLES=7;
+  for(let d=Math.min(VISIBLES,liste.length-bacIdx)-1; d>=0; d--){
+    const r=liste[bacIdx+d];
+    const el=document.createElement('button');
+    el.className='bac-p';
+    el.setAttribute('aria-hidden', d>0 ? 'true' : 'false');
+    el.tabIndex = d===0 ? 0 : -1;
+    // Chaque disque recule de 62px, monte un peu, et s'incline.
+    // translate(-50%,-50%) centre la pochette ; le reste l'enfonce dans la caisse.
+    el.style.transform='translate(-50%,-50%) '+
+                       'translate3d('+(d*17)+'px,'+(-d*13)+'px,'+(-d*62)+'px) '+
+                       'rotateX(11deg) rotateY(-13deg) scale('+(1-d*0.012)+')';
+    el.style.opacity   = d===0 ? 1 : Math.max(.18, .74-d*.11);
+    el.style.filter    = d===0 ? 'none' : 'brightness('+(1-d*.1)+')';
+    el.style.zIndex    = String(50-d);
+    el.innerHTML=pochetteOu(r,'Pochette de '+esc(r.t));
+    el.onclick = d===0 ? ()=>ouvrir(bacIdx) : ()=>{ bacIdx+=d; rendreBac(); };
+    piste.appendChild(el);
+  }
+
+  const r=liste[bacIdx];
+  fiche.innerHTML='<p class="bt">'+esc(r.t)+'</p><p class="ba">'+esc(r.a)+'</p>'+
+    '<p class="bk">'+esc(r.k)+(r.y?' · '+r.y:'')+'</p>';
+  document.getElementById('bacRang').textContent=(bacIdx+1)+' / '+liste.length;
+  document.getElementById('bacPrec').disabled = bacIdx===0;
+  document.getElementById('bacSuiv').disabled = bacIdx===liste.length-1;
+}
+const glisserBac=n=>{ bacIdx=Math.max(0,Math.min(bacIdx+n,liste.length-1)); rendreBac(); };
+document.getElementById('bacPrec').onclick=()=>glisserBac(-1);
+document.getElementById('bacSuiv').onclick=()=>glisserBac(1);
+
+// Glissement au doigt ou à la souris, sans bibliothèque.
+(function(){
+  const z=document.querySelector('.bac'); let x0=null;
+  const debut=e=>{ x0=(e.touches?e.touches[0]:e).clientX; };
+  const fin=e=>{
+    if(x0===null) return;
+    const dx=((e.changedTouches?e.changedTouches[0]:e).clientX)-x0;
+    if(Math.abs(dx)>42) glisserBac(dx<0?1:-1);
+    x0=null;
+  };
+  z.addEventListener('touchstart',debut,{passive:true});
+  z.addEventListener('touchend',fin);
+  z.addEventListener('mousedown',debut);
+  z.addEventListener('mouseup',fin);
+})();
+
+/* ── PLEIN CADRE ──────────────────────────────────────────── */
+function rendrePlein(){
+  const g=document.getElementById('vuePlein'); g.innerHTML='';
+  liste.forEach((r,i)=>{
+    const b=document.createElement('button');
+    b.innerHTML=pochetteOu(r,esc(r.t))+
+      '<span class="sur"><b>'+esc(r.t)+'</b><i>'+esc(r.a)+'</i></span>';
+    b.onclick=()=>ouvrir(i);
+    g.appendChild(b);
+  });
+}
+
+/* ── CONSTELLATION ────────────────────────────────────────────
+   Abscisse : l'année de pressage. Ordonnée : la tension du
+   marché, recherché ÷ possédé. Rayon : le prix suggéré VG+.
+   Un disque haut est convoité ; un disque haut ET gros est cher
+   parce qu'il est convoité. Un disque bas est simplement courant. */
+const TEINTES={'Classique':'#7FA6B8','Jazz':'#C9873F','Pop-rock':'#B85C6E',
+  'Francophone':'#8FA86B','Électro / Dance':'#9B7FC4','Funk / Soul':'#D4A64A',
+  'Bandes sonores':'#6FA89A','Traditionnel / Monde':'#C4785C',
+  'Transcriptions radio':'#8A8378','Général':'#6B6153'};
+const teinte=f=>TEINTES[f]||'#6B6153';
+
+function rendreCiel(){
+  const svg=document.getElementById('cielSvg');
+  const info=document.getElementById('cielInfo');
+  const pts=liste.filter(r=>r.y && r.h>0 && r.w!=null);
+  const W=1000,H=520,ml=52,mr=22,mt=26,mb=44;
+
+  if(pts.length<2){
+    svg.innerHTML='<text x="500" y="240" text-anchor="middle" fill="#6B6153" '+
+      'font-family="ui-monospace,monospace" font-size="13">'+
+      'Pas assez de disques datés et cotés dans cette sélection.</text>';
+    document.getElementById('cielLg').innerHTML=''; return;
+  }
+
+  const ans=pts.map(r=>+r.y), a0=Math.min(...ans), a1=Math.max(...ans);
+  const tension=r=>r.w/r.h;
+  const tMax=Math.max(...pts.map(tension),1.2);
+  const vMax=Math.max(...pts.map(r=>r.m||0),1);
+  const X=a=>ml+((a-a0)/((a1-a0)||1))*(W-ml-mr);
+  const Y=t=>H-mb-(Math.min(t,tMax)/tMax)*(H-mt-mb);
+  const R=v=>4+Math.sqrt((v||0)/vMax)*13;
+
+  let s='';
+  // Repère : la ligne 1,0 sépare ce qu'on s'arrache de ce qui dort.
+  const yEq=Y(1);
+  if(yEq>mt && yEq<H-mb){
+    s+='<line class="axe" x1="'+ml+'" y1="'+yEq+'" x2="'+(W-mr)+'" y2="'+yEq+
+       '" stroke-dasharray="3 5"/>'+
+       '<text class="grad" x="'+(ml+6)+'" y="'+(yEq-7)+'">AUTANT DE DEMANDEURS QUE DE DÉTENTEURS</text>';
+  }
+  s+='<line class="axe" x1="'+ml+'" y1="'+(H-mb)+'" x2="'+(W-mr)+'" y2="'+(H-mb)+'"/>';
+  const pas = (a1-a0)>60?20:(a1-a0)>25?10:5;
+  for(let a=Math.ceil(a0/pas)*pas; a<=a1; a+=pas)
+    s+='<text class="grad" x="'+X(a)+'" y="'+(H-mb+18)+'" text-anchor="middle">'+a+'</text>';
+  s+='<text class="grad" x="'+ml+'" y="'+(mt-8)+'">TENSION ×'+tMax.toFixed(1)+'</text>';
+
+  pts.forEach(r=>{
+    const i=liste.indexOf(r);
+    s+='<g class="pt" tabindex="0" role="button" data-i="'+i+'" '+
+       'aria-label="'+esc(r.t)+', '+esc(r.a)+'">'+
+       '<circle cx="'+X(+r.y)+'" cy="'+Y(tension(r))+'" r="'+R(r.m)+'" '+
+       'fill="'+teinte(r.f)+'" fill-opacity=".62" stroke="'+teinte(r.f)+'"/></g>';
+  });
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  svg.innerHTML=s;
+
+  svg.querySelectorAll('.pt').forEach(g=>{
+    const r=liste[+g.dataset.i];
+    const montrer=e=>{
+      const b=svg.getBoundingClientRect(), c=g.querySelector('circle').getBoundingClientRect();
+      info.innerHTML='<b>'+esc(r.t)+'</b><span>'+esc(r.a)+' · '+r.y+'</span>'+
+        '<em>'+r.w+' cherchent · '+r.h+' possèdent'+(r.m?' · '+arg(r.m):'')+'</em>';
+      info.style.left=Math.min(c.left-b.left+18, b.width-240)+'px';
+      info.style.top =(c.top-b.top-10)+'px';
+      info.style.opacity=1;
+    };
+    g.addEventListener('mouseenter',montrer);
+    g.addEventListener('focus',montrer);
+    g.addEventListener('mouseleave',()=>info.style.opacity=0);
+    g.addEventListener('blur',()=>info.style.opacity=0);
+    g.addEventListener('click',()=>ouvrir(+g.dataset.i));
+    g.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();ouvrir(+g.dataset.i);} });
+  });
+
+  const fams=[...new Set(pts.map(r=>r.f))].sort();
+  document.getElementById('cielLg').innerHTML=
+    fams.map(f=>'<i style="--pastille:'+teinte(f)+'">'+esc(f)+'</i>').join('')+
+    '<i style="--pastille:transparent">Le rayon suit le prix suggéré · '+
+    (liste.length-pts.length)+' disque(s) écarté(s), sans année ou sans statistiques</i>';
+}
+
+/* ── LIGNE DU TEMPS ───────────────────────────────────────────
+   Une colonne par année, les pochettes empilées. La hauteur dit
+   ce que cette année a laissé chez toi. */
+function rendreTemps(){
+  const piste=document.getElementById('tempsPiste'); piste.innerHTML='';
+  const dates=liste.filter(r=>r.y);
+  if(!dates.length){ piste.innerHTML='<p class="bac-aide">Aucun disque daté dans cette sélection.</p>'; return; }
+  const a0=Math.min(...dates.map(r=>+r.y)), a1=Math.max(...dates.map(r=>+r.y));
+  for(let a=a0;a<=a1;a++){
+    const col=document.createElement('div');
+    col.className='temps-col'+(a%10===0?' temps-dec':'');
+    dates.filter(r=>+r.y===a).forEach(r=>{
+      const b=document.createElement('button');
+      b.title=r.t+' — '+r.a+' ('+a+')';
+      b.setAttribute('aria-label',r.t+', '+r.a+', '+a);
+      b.innerHTML=r.th?'<img loading="lazy" src="'+r.th+'" alt="">':'';
+      b.onclick=()=>ouvrir(liste.indexOf(r));
+      col.appendChild(b);
+    });
+    const an=document.createElement('span');
+    an.className='temps-an'; an.textContent=(a%5===0||a===a0||a===a1)?a:'';
+    col.appendChild(an);
+    piste.appendChild(col);
+  }
+}
+
 function esc(s){return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 
 const voile=document.getElementById('voile'), flip=document.getElementById('flip');
@@ -360,7 +722,13 @@ document.getElementById('tourner').onclick=()=>flip.classList.toggle('dos');
 document.getElementById('fermer').onclick=()=>voile.classList.remove('on');
 voile.onclick=e=>{if(e.target===voile)voile.classList.remove('on')};
 document.addEventListener('keydown',e=>{
-  if(!voile.classList.contains('on')) return;
+  // Fiche fermée + vue « bac ouvert » : les flèches feuillettent la caisse.
+  if(!voile.classList.contains('on')){
+    if(vue!=='bac' || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    if(e.key==='ArrowLeft'){ e.preventDefault(); glisserBac(-1); }
+    if(e.key==='ArrowRight'){ e.preventDefault(); glisserBac(1); }
+    return;
+  }
   if(e.key==='Escape') voile.classList.remove('on');
   if(e.key==='ArrowLeft') ouvrir(idx-1);
   if(e.key==='ArrowRight') ouvrir(idx+1);
@@ -382,6 +750,9 @@ document.getElementById('pige').onclick=()=>{
 };
 
 q.oninput=rendre; tri.onchange=rendre;
+
+// Une seule feuille de style pour l'impression n'aurait pas de sens ici :
+// les quatre vues sont des façons de regarder un écran, pas du papier.
 rendre();
 </script>
 </body>
