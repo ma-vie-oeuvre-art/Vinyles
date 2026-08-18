@@ -139,6 +139,8 @@ footer a{color:var(--poussiere)}
 .compte.top{color:#c8a24a;margin-top:-.35rem}
 .compte.top strong{font-weight:600}
 .legende .v .g{color:#8a7f70;font-size:.72rem;letter-spacing:.02em}
+.legende .rare{margin:.3rem 0 0;font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;color:#a8683c}
 </style>
 </head>
 <body>
@@ -299,7 +301,7 @@ function rendre(){
     : '';
   compte.textContent=liste.length+(liste.length>1?' disques':' disque')+
     (liste.length!==D.length?' sur '+D.length:'')+
-    ' · '+arg(vSel)+' au grade VG+'+
+    ' · '+arg(vSel)+' en prix suggérés VG+'+
     (sans?' · '+sans+' sans estimation':'');
   liste.forEach((r,i)=>{
     const c=document.createElement('button');
@@ -311,6 +313,7 @@ function rendre(){
       '<span class="adresse">'+r.b+' · '+r.o+' / '+totalBac[r.b]+'</span></div>'+
       '<div class="legende"><p class="t">'+esc(r.t)+'</p><p class="a">'+esc(r.a)+'</p>'+
       '<p class="k">'+esc(r.k)+'</p>'+
+      (r.h!=null&&r.w!=null&&r.h<r.w?'<p class="rare">recherché</p>':'')+
       (r.m?'<p class="v">'+arg(r.m)+' <span class="g">VG+</span>'+
             (r.x?' <span class="g">· '+arg(r.x)+' Mint</span>':'')+'</p>'
           :'<p class="v vide">pas d\'estimation</p>')+
