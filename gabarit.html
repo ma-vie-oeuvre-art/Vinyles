@@ -136,6 +136,8 @@ footer a{color:var(--poussiere)}
 .legende .v{margin:.35rem 0 0;font-size:.78rem;letter-spacing:.04em;color:#c8a24a}
 .legende .v.vide{color:#6b6257;font-style:italic}
 .puce.nul{opacity:.3}
+.compte.top{color:#c8a24a;margin-top:-.35rem}
+.compte.top strong{font-weight:600}
 </style>
 </head>
 <body>
@@ -159,6 +161,7 @@ footer a{color:var(--poussiere)}
       <option value="artiste">Interprète</option>
       <option value="annee">Année</option>
       <option value="label">Label</option>
+      <option value="valeur">Valeur, du plus coté</option>
     </select>
     <button class="pige" id="pige">Pige un disque</button>
   </div>
@@ -166,6 +169,7 @@ footer a{color:var(--poussiere)}
   <div class="rangee"><span class="etiq">Bac</span><span id="bacs" style="display:contents"></span></div>
   <div class="rangee"><span class="etiq">Famille</span><span id="familles" style="display:contents"></span></div>
   <p class="compte" id="compte"></p>
+  <p class="compte top" id="top"></p>
 
   <div class="mur" id="mur"></div>
   <p class="rien" id="rien" hidden>Aucun disque ne correspond.<br>Efface la recherche ou relâche un filtre.</p>
@@ -222,7 +226,10 @@ D.forEach(r=>{ valBac[r.b]=(valBac[r.b]||0)+(r.v||0);
                if(r.v) cotesBac[r.b]=(cotesBac[r.b]||0)+1; });
 const valTotale=D.reduce((s,r)=>s+(r.v||0),0);
 const nbCotes=D.filter(r=>r.v).length;
-const arg=n=>n.toLocaleString('fr-CA',{style:'currency',currency:'CAD',maximumFractionDigits:0});
+// Sous 10 $, les cents comptent : un disque à 0,49 $ affiché « 0 $ »
+// donne l'impression d'une donnée manquante. Au-dessus, ils encombrent.
+const arg=n=>n.toLocaleString('fr-CA',{style:'currency',currency:'CAD',
+  minimumFractionDigits:n<10?2:0, maximumFractionDigits:n<10?2:0});
 
 function puces(el, vals, get, set, compteurs){
   vals.forEach(v=>{
@@ -253,6 +260,7 @@ function filtrer(){
     k==='artiste'?a.a.localeCompare(b.a,'fr'):
     k==='label'?a.k.localeCompare(b.k,'fr'):
     k==='annee'?(+b.y||0)-(+a.y||0):
+    k==='valeur'?(b.v||0)-(a.v||0):
     a.b.localeCompare(b.b)|| a.o-b.o);
 }
 
@@ -283,6 +291,11 @@ function rendre(){
     : 'Chalet · '+Object.keys(totalBac).length+' bacs · '+D.length+' disques · '+arg(valTotale);
   const vSel=liste.reduce((s,r)=>s+(r.v||0),0);
   const sans=liste.filter(r=>!r.v).length;
+  const top=liste.filter(r=>r.v).sort((a,b)=>b.v-a.v)[0];
+  const dTop=document.getElementById('top');
+  dTop.innerHTML = top && liste.length>1
+    ? 'Le plus coté : <strong>'+esc(top.t)+'</strong> — '+esc(top.a)+' · '+arg(top.v)
+    : '';
   compte.textContent=liste.length+(liste.length>1?' disques':' disque')+
     (liste.length!==D.length?' sur '+D.length:'')+
     ' · '+arg(vSel)+' au plus bas prix en vente'+
