@@ -133,6 +133,9 @@ footer a{color:var(--poussiere)}
   .etiq{min-width:100%}
 }
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+.legende .v{margin:.35rem 0 0;font-size:.78rem;letter-spacing:.04em;color:#c8a24a}
+.legende .v.vide{color:#6b6257;font-style:italic}
+.puce.nul{opacity:.3}
 </style>
 </head>
 <body>
@@ -211,6 +214,16 @@ let fBac=null, fFam=null, liste=[], idx=0;
 // totaux réels par bac : c'est le dénominateur du « rang X sur N »
 const totalBac={}; D.forEach(r=>totalBac[r.b]=(totalBac[r.b]||0)+1);
 
+// Valeurs. « v » est le PRIX LE PLUS BAS actuellement en vente sur Discogs,
+// pas une estimation de valeur. Un disque sans offre au monde n'a pas de v :
+// c'est une absence d'offre, pas une absence de valeur. On les compte à part.
+const valBac={}, cotesBac={};
+D.forEach(r=>{ valBac[r.b]=(valBac[r.b]||0)+(r.v||0);
+               if(r.v) cotesBac[r.b]=(cotesBac[r.b]||0)+1; });
+const valTotale=D.reduce((s,r)=>s+(r.v||0),0);
+const nbCotes=D.filter(r=>r.v).length;
+const arg=n=>n.toLocaleString('fr-CA',{style:'currency',currency:'CAD',maximumFractionDigits:0});
+
 function puces(el, vals, get, set, compteurs){
   vals.forEach(v=>{
     const b=document.createElement('button');
@@ -243,15 +256,37 @@ function filtrer(){
     a.b.localeCompare(b.b)|| a.o-b.o);
 }
 
+// Les compteurs doivent dire la vérité SOUS LE FILTRE COURANT.
+// Un compteur global à côté d'un résultat filtré promet des disques
+// qui n'existent pas dans le bac choisi — c'est ce qui donnait
+// « TRADITIONNEL / MONDE 1 » et zéro résultat.
+function majCompteurs(){
+  const cb={}, cf={};
+  D.forEach(r=>{ if(!fFam||r.f===fFam) cb[r.b]=(cb[r.b]||0)+1;
+                 if(!fBac||r.b===fBac) cf[r.f]=(cf[r.f]||0)+1; });
+  const poser=(el,src)=>[...el.children].forEach(b=>{
+    const n=src[b.dataset.v]||0;
+    const s=b.querySelector('.n'); if(s) s.textContent=n;
+    b.classList.toggle('nul', n===0 && b.dataset.v!==fBac && b.dataset.v!==fFam);
+  });
+  poser(document.getElementById('bacs'), cb);
+  poser(document.getElementById('familles'), cf);
+}
+
 function rendre(){
   liste=filtrer();
+  majCompteurs();
   mur.innerHTML=''; rien.hidden=liste.length>0;
   const eb=document.getElementById('eyebrow');
   eb.textContent = fBac
-    ? 'Bac '+fBac.replace('B-','')+' · '+totalBac[fBac]+' disques'
-    : 'Chalet · '+Object.keys(totalBac).length+' bacs · '+D.length+' disques';
+    ? 'Bac '+fBac.replace('B-','')+' · '+totalBac[fBac]+' disques · '+arg(valBac[fBac]||0)
+    : 'Chalet · '+Object.keys(totalBac).length+' bacs · '+D.length+' disques · '+arg(valTotale);
+  const vSel=liste.reduce((s,r)=>s+(r.v||0),0);
+  const sans=liste.filter(r=>!r.v).length;
   compte.textContent=liste.length+(liste.length>1?' disques':' disque')+
-    (liste.length!==D.length?' sur '+D.length:'');
+    (liste.length!==D.length?' sur '+D.length:'')+
+    ' · '+arg(vSel)+' au plus bas prix en vente'+
+    (sans?' · '+sans+(sans>1?' sans offre au monde':' sans offre au monde'):'');
   liste.forEach((r,i)=>{
     const c=document.createElement('button');
     c.className='carte'; c.style.animationDelay=Math.min(i*14,500)+'ms';
@@ -261,7 +296,9 @@ function rendre(){
     c.innerHTML='<div class="pochette">'+img+
       '<span class="adresse">'+r.b+' · '+r.o+' / '+totalBac[r.b]+'</span></div>'+
       '<div class="legende"><p class="t">'+esc(r.t)+'</p><p class="a">'+esc(r.a)+'</p>'+
-      '<p class="k">'+esc(r.k)+'</p></div>';
+      '<p class="k">'+esc(r.k)+'</p>'+
+      (r.v?'<p class="v">'+arg(r.v)+'</p>':'<p class="v vide">aucune offre</p>')+
+      '</div>';
     c.onclick=()=>ouvrir(i);
     mur.appendChild(c);
   });
