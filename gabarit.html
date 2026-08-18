@@ -138,6 +138,7 @@ footer a{color:var(--poussiere)}
 .puce.nul{opacity:.3}
 .compte.top{color:#c8a24a;margin-top:-.35rem}
 .compte.top strong{font-weight:600}
+.legende .v .g{color:#8a7f70;font-size:.72rem;letter-spacing:.02em}
 </style>
 </head>
 <body>
@@ -222,10 +223,10 @@ const totalBac={}; D.forEach(r=>totalBac[r.b]=(totalBac[r.b]||0)+1);
 // pas une estimation de valeur. Un disque sans offre au monde n'a pas de v :
 // c'est une absence d'offre, pas une absence de valeur. On les compte à part.
 const valBac={}, cotesBac={};
-D.forEach(r=>{ valBac[r.b]=(valBac[r.b]||0)+(r.v||0);
-               if(r.v) cotesBac[r.b]=(cotesBac[r.b]||0)+1; });
-const valTotale=D.reduce((s,r)=>s+(r.v||0),0);
-const nbCotes=D.filter(r=>r.v).length;
+D.forEach(r=>{ valBac[r.b]=(valBac[r.b]||0)+(r.m||0);
+               if(r.m) cotesBac[r.b]=(cotesBac[r.b]||0)+1; });
+const valTotale=D.reduce((s,r)=>s+(r.m||0),0);
+const nbCotes=D.filter(r=>r.m).length;
 // Sous 10 $, les cents comptent : un disque à 0,49 $ affiché « 0 $ »
 // donne l'impression d'une donnée manquante. Au-dessus, ils encombrent.
 const arg=n=>n.toLocaleString('fr-CA',{style:'currency',currency:'CAD',
@@ -260,7 +261,7 @@ function filtrer(){
     k==='artiste'?a.a.localeCompare(b.a,'fr'):
     k==='label'?a.k.localeCompare(b.k,'fr'):
     k==='annee'?(+b.y||0)-(+a.y||0):
-    k==='valeur'?(b.v||0)-(a.v||0):
+    k==='valeur'?(b.m||0)-(a.m||0):
     a.b.localeCompare(b.b)|| a.o-b.o);
 }
 
@@ -289,17 +290,17 @@ function rendre(){
   eb.textContent = fBac
     ? 'Bac '+fBac.replace('B-','')+' · '+totalBac[fBac]+' disques · '+arg(valBac[fBac]||0)
     : 'Chalet · '+Object.keys(totalBac).length+' bacs · '+D.length+' disques · '+arg(valTotale);
-  const vSel=liste.reduce((s,r)=>s+(r.v||0),0);
-  const sans=liste.filter(r=>!r.v).length;
-  const top=liste.filter(r=>r.v).sort((a,b)=>b.v-a.v)[0];
+  const vSel=liste.reduce((s,r)=>s+(r.m||0),0);
+  const sans=liste.filter(r=>!r.m).length;
+  const top=liste.filter(r=>r.m).sort((a,b)=>b.m-a.m)[0];
   const dTop=document.getElementById('top');
   dTop.innerHTML = top && liste.length>1
-    ? 'Le plus coté : <strong>'+esc(top.t)+'</strong> — '+esc(top.a)+' · '+arg(top.v)
+    ? 'Le plus coté : <strong>'+esc(top.t)+'</strong> — '+esc(top.a)+' · '+arg(top.m)
     : '';
   compte.textContent=liste.length+(liste.length>1?' disques':' disque')+
     (liste.length!==D.length?' sur '+D.length:'')+
-    ' · '+arg(vSel)+' au plus bas prix en vente'+
-    (sans?' · '+sans+(sans>1?' sans offre au monde':' sans offre au monde'):'');
+    ' · '+arg(vSel)+' au grade VG+'+
+    (sans?' · '+sans+' sans estimation':'');
   liste.forEach((r,i)=>{
     const c=document.createElement('button');
     c.className='carte'; c.style.animationDelay=Math.min(i*14,500)+'ms';
@@ -310,7 +311,9 @@ function rendre(){
       '<span class="adresse">'+r.b+' · '+r.o+' / '+totalBac[r.b]+'</span></div>'+
       '<div class="legende"><p class="t">'+esc(r.t)+'</p><p class="a">'+esc(r.a)+'</p>'+
       '<p class="k">'+esc(r.k)+'</p>'+
-      (r.v?'<p class="v">'+arg(r.v)+'</p>':'<p class="v vide">aucune offre</p>')+
+      (r.m?'<p class="v">'+arg(r.m)+' <span class="g">VG+</span>'+
+            (r.x?' <span class="g">· '+arg(r.x)+' Mint</span>':'')+'</p>'
+          :'<p class="v vide">pas d\'estimation</p>')+
       '</div>';
     c.onclick=()=>ouvrir(i);
     mur.appendChild(c);
