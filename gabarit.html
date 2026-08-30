@@ -288,35 +288,6 @@ footer a{color:var(--poussiere)}
 }
 .jeton button:hover{opacity:1}
 .jeton.vider{border-style:dashed;opacity:.6;cursor:pointer}
-
-/* ── LES ARTISTES ─────────────────────────────────────────────
-   Ajouté le 30 août 2026. La collection se regardait par bac, par
-   famille, par année — jamais par la personne qui joue. C'est
-   pourtant la première question devant un mur de pochettes :
-   « qu'est-ce que j'ai de lui ? »                            */
-.artistes{display:block}
-.art-grille{display:grid;gap:1rem;margin:0 0 2rem;
-  grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}
-.art-titre{font-size:.76rem;letter-spacing:.11em;text-transform:uppercase;
-  opacity:.5;margin:0 0 .9rem}
-.art-c{text-align:left;font:inherit;color:inherit;cursor:pointer;
-  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.09);
-  border-radius:3px;padding:.85rem .9rem;display:flex;flex-direction:column;
-  gap:.6rem;transition:border-color .18s,background .18s;}
-.art-c:hover,.art-c:focus-visible{border-color:rgba(224,178,90,.55);background:rgba(255,255,255,.05)}
-.art-n{font-size:.95rem;line-height:1.3}
-.art-m{font-size:.74rem;letter-spacing:.05em;text-transform:uppercase;opacity:.55}
-.art-p{display:flex;gap:.3rem}
-.art-p img,.art-p .rien-p{width:46px;height:46px;object-fit:cover;border-radius:2px;
-  box-shadow:0 1px 4px rgba(0,0,0,.5);flex:0 0 auto;}
-.art-p .rien-p{display:flex;align-items:center;justify-content:center;font-size:.5rem;
-  text-align:center;opacity:.35;background:rgba(255,255,255,.04);line-height:1.1}
-.art-seuls{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.6rem}
-.art-s{font:inherit;font-size:.82rem;color:inherit;cursor:pointer;
-  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);
-  border-radius:999px;padding:.3rem .7rem;transition:border-color .16s,background .16s}
-.art-s:hover,.art-s:focus-visible{border-color:rgba(224,178,90,.55);background:rgba(255,255,255,.06)}
-.art-note{font-size:.78rem;opacity:.45;margin:0}
 .fa-lien{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;
   text-align:left;border-bottom:1px dashed rgba(255,255,255,.3);}
 .fa-lien:hover{border-bottom-color:currentColor}
@@ -356,6 +327,7 @@ footer a{color:var(--poussiere)}
     <select id="mFmt"  aria-label="Format"></select>
     <select id="mPays" aria-label="Pays du pressage"></select>
     <select id="mDec"  aria-label="Décennie"></select>
+    <select id="mArt"  aria-label="Interprète"></select>
   </div>
   <div class="jetons" id="jetons"></div>
   <nav class="vues" id="vues" aria-label="Façon de regarder la collection"></nav>
@@ -388,9 +360,6 @@ footer a{color:var(--poussiere)}
 
   <!-- Ligne du temps : une colonne par année. -->
   <section class="temps" id="vueTemps" hidden><div class="temps-piste" id="tempsPiste"></div></section>
-
-  <!-- Les artistes : une carte par interprète, cliquable. -->
-  <section class="artistes" id="vueArtistes" hidden></section>
   <p class="rien" id="rien" hidden>Aucun disque ne correspond.<br>Efface la recherche ou relâche un filtre.</p>
 
   <footer>
@@ -463,6 +432,40 @@ function puces(el, vals, get, set, compteurs){
   });
 }
 const parFamille={}; D.forEach(r=>parFamille[r.f]=(parFamille[r.f]||0)+1);
+
+/* ── L'INTERPRÈTE COMME AXE ────────────────────────────────────
+   30 août 2026. Le site savait répondre à « qu'y a-t-il dans le
+   bac 04 » mais pas à « qu'est-ce que j'ai de Ginette Reno »,
+   qui est pourtant la question qu'on se pose devant un mur de
+   pochettes. Un menu de plus dans la barre Affiner, et le nom
+   cliquable dans chaque fiche : deux chemins vers la même chose.
+
+   ESSAI ABANDONNÉ, ET POURQUOI. Une vue à part avait d'abord été
+   faite, avec une carte par interprète. Deux défauts l'ont
+   condamnée : 178 des 198 interprètes n'ont qu'un seul disque,
+   ce qui noyait les vingt qui comptent ; et la règle CSS de ses
+   cartes écrasait l'attribut « hidden », si bien que la liste
+   s'affichait SOUS les autres vues. Un menu déroulant fait le
+   même travail sans occuper l'écran.
+
+   NORMALISATION. Discogs colle une astérisque aux noms qu'il a
+   dû désambiguïser (« Beethoven* ») et un numéro aux homonymes
+   (« The Box (4) »). Artefacts de catalogue, pas des noms.
+   On ne découpe PAS sur « / » ni « · » : « Saint-Saëns /
+   Wieniawski » reste entier, découper fabriquerait de faux
+   solistes. Même prudence qu'à la règle 24 — on rapproche les
+   graphies, jamais le sens.
+
+   Les compilations sont écartées : « Various » n'est pas
+   quelqu'un, et l'entrée pèserait plus lourd que Deschamps. */
+function artNom(a){
+  return String(a||'').replace(/\*/g,'').replace(/\s*\(\d+\)/g,'')
+                      .replace(/\s+/g,' ').trim();
+}
+const PAS_UN_ARTISTE=/^(various|various artists|artistes vari[ée]s?|divers)$/i;
+const parArt={};
+D.forEach(r=>{ const n=artNom(r.a);
+  if(n && !PAS_UN_ARTISTE.test(n)) parArt[n]=(parArt[n]||0)+1; });
 puces(document.getElementById('bacs'), Object.keys(totalBac).sort(), ()=>fBac, v=>fBac=v, totalBac);
 // ── BARRE COMPACTE, 30 AOÛT 2026 ─────────────────────────────
 // Cinq axes en menus plutôt qu'en rangées : même information,
@@ -470,7 +473,7 @@ puces(document.getElementById('bacs'), Object.keys(totalBac).sort(), ()=>fBac, v
 // appartient à plusieurs regroupements à la fois.
 var fReg='', fFmt='', fPays='', fDec='';
 // Filtre par interprète, posé en cliquant une carte ou le nom d'une fiche.
-var fArt='', fArtNom='';
+var fArt='';
 const parReg={}; D.forEach(r=>(r.fa||[]).forEach(x=>parReg[x]=(parReg[x]||0)+1));
 const parFmt={}; D.forEach(r=>{ if(r.fp) parFmt[r.fp]=(parFmt[r.fp]||0)+1; });
 const parPays={}; D.forEach(r=>{ if(r.pa) parPays[r.pa]=(parPays[r.pa]||0)+1; });
@@ -489,6 +492,9 @@ const AXES=[
    get:()=>fPays, set:v=>fPays=v},
   {id:'mDec', nom:'Décennie',     src:()=>parDec,     tri:'nom',
    get:()=>fDec,  set:v=>fDec=v},
+  // Les plus présents d'abord : c'est là qu'il y a quelque chose à voir.
+  {id:'mArt', nom:'Interprète',    src:()=>parArt,     tri:'nb',
+   get:()=>fArt,  set:v=>fArt=v},
 ];
 
 // Les valeurs à zéro sont ÉCARTÉES du menu plutôt que grisées :
@@ -518,8 +524,6 @@ function majJetons(){
   const z=document.getElementById('jetons'); if(!z) return;
   const actifs=[];
   if(fBac) actifs.push({t:'Bac '+fBac, off:()=>fBac=''});
-  // L'interprète est un filtre comme un autre : il se retire d'un clic.
-  if(fArt) actifs.push({t:fArtNom||fArt, off:()=>{fArt='';fArtNom='';}});
   AXES.forEach(a=>{ if(a.get()) actifs.push({t:a.get(), off:()=>a.set('')}); });
   z.innerHTML='';
   actifs.forEach(j=>{
@@ -535,7 +539,7 @@ function majJetons(){
     const t=document.createElement('span');
     t.className='jeton vider'; t.textContent='Tout effacer';
     t.setAttribute('role','button'); t.tabIndex=0;
-    const vider=()=>{ fBac=''; fArt=''; fArtNom=''; AXES.forEach(a=>a.set('')); rendre(); };
+    const vider=()=>{ fBac=''; AXES.forEach(a=>a.set('')); rendre(); };
     t.addEventListener('click',vider);
     t.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();vider();} });
     z.appendChild(t);
@@ -547,7 +551,7 @@ function filtrer(){
   let s=D.filter(r=>
     (!fBac||r.b===fBac) && (!fFam||r.f===fFam) &&
     // Un interprète choisi masque tout le reste de la collection.
-    (!fArt||artClef(r.a)===fArt) &&
+    (!fArt||artNom(r.a)===fArt) &&
     // fa est un tableau : on teste l'appartenance, pas l'égalité.
     (!fReg||(r.fa||[]).includes(fReg)) && (!fFmt||r.fp===fFmt) &&
     (!fPays||r.pa===fPays) && (!fDec||r.dc===fDec) &&
@@ -569,12 +573,12 @@ function filtrer(){
 // qui n'existent pas dans le bac choisi — c'est ce qui donnait
 // « TRADITIONNEL / MONDE 1 » et zéro résultat.
 function majCompteurs(){
-  const cb={}, cf={}, cReg={}, cFmt={}, cPays={}, cDec={};
+  const cb={}, cf={}, cReg={}, cFmt={}, cPays={}, cDec={}, cArt={};
   // Un disque compte pour un axe s'il satisfait TOUS LES AUTRES
   // filtres actifs. Sans ça, un bouton annonce « 12 » et le clic
   // ne rend rien — le défaut déjà corrigé pour Bac et Famille.
   const ok=(r,sauf)=>
-       (sauf==='art'|| !fArt || artClef(r.a)===fArt)
+       (sauf==='art'|| !fArt || artNom(r.a)===fArt)
     && (sauf==='b'  || !fBac  || r.b===fBac)
     && (sauf==='f'  || !fFam  || r.f===fFam)
     && (sauf==='fa' || !fReg  || (r.fa||[]).includes(fReg))
@@ -588,6 +592,8 @@ function majCompteurs(){
     if(ok(r,'fp') && r.fp) cFmt[r.fp]=(cFmt[r.fp]||0)+1;
     if(ok(r,'pa') && r.pa) cPays[r.pa]=(cPays[r.pa]||0)+1;
     if(ok(r,'dc') && r.dc) cDec[r.dc]=(cDec[r.dc]||0)+1;
+    if(ok(r,'art')){ const n=artNom(r.a);
+      if(n && !PAS_UN_ARTISTE.test(n)) cArt[n]=(cArt[n]||0)+1; }
   });
   const poser=(el,src)=>[...el.children].forEach(b=>{
     const n=src[b.dataset.v]||0;
@@ -598,7 +604,7 @@ function majCompteurs(){
   // Les quatre axes ne sont plus des rangées mais des menus :
   // on les reconstruit avec les comptes recalculés, et on
   // rafraîchit les jetons dans la foulée.
-  const comptes={mFam:cf, mReg:cReg, mFmt:cFmt, mPays:cPays, mDec:cDec};
+  const comptes={mFam:cf, mReg:cReg, mFmt:cFmt, mPays:cPays, mDec:cDec, mArt:cArt};
   AXES.forEach(a=>remplirMenu(a, comptes[a.id]||{}));
   majJetons();
 }
@@ -624,17 +630,15 @@ function rendre(){
     ' · '+arg(vSel)+' en prix suggérés VG+'+
     (sans?' · '+sans+' sans estimation':'');
   // Aiguillage : cinq vues, une seule liste filtrée.
-  document.querySelectorAll('#mur,#vueBac,#vuePlein,#vueCiel,#vueTemps,#vueArtistes')
+  document.querySelectorAll('#mur,#vueBac,#vuePlein,#vueCiel,#vueTemps')
     .forEach(el=>el.hidden = true);
   const cible={mur:'mur',bac:'vueBac',plein:'vuePlein',
-               ciel:'vueCiel',temps:'vueTemps',
-               artistes:'vueArtistes'}[vue];
+               ciel:'vueCiel',temps:'vueTemps'}[vue];
   document.getElementById(cible).hidden=false;
   if(vue==='bac')   return rendreBac();
   if(vue==='plein') return rendrePlein();
   if(vue==='ciel')  return rendreCiel();
   if(vue==='temps') return rendreTemps();
-  if(vue==='artistes') return rendreArtistes();
 
   liste.forEach((r,i)=>{
     const c=document.createElement('button');
@@ -669,7 +673,6 @@ const VUES=[
   ['plein', 'Plein cadre'],
   ['ciel',  'Constellation'],
   ['temps', 'Ligne du temps'],
-  ['artistes','Les artistes'],
 ];
 const barre=document.getElementById('vues');
 // Rafraîchit l'état de la barre. Appelée aussi quand la vue change
@@ -769,109 +772,6 @@ const TEINTES={'Classique':'#7FA6B8','Jazz':'#C9873F','Pop-rock':'#B85C6E',
   'Transcriptions radio':'#8A8378','Général':'#6B6153'};
 const teinte=f=>TEINTES[f]||'#6B6153';
 
-/* ── LES ARTISTES ─────────────────────────────────────────────
-   Ajouté le 30 août 2026.
-
-   POURQUOI. Le site savait répondre à « qu'est-ce qu'il y a dans le
-   bac 04 » et à « qu'est-ce qui date de 1975 ». Il ne savait pas
-   répondre à « qu'est-ce que j'ai de Ginette Reno », qui est la
-   question qu'on se pose le plus souvent devant un mur de pochettes.
-
-   NORMALISATION DU NOM. Discogs colle une astérisque aux noms qu'il
-   a dû désambiguïser (« Beethoven* ») et un numéro entre parenthèses
-   aux homonymes (« The Box (4) »). Ce sont des artefacts de
-   catalogue, pas des noms : on les retire pour REGROUPER, mais on
-   AFFICHE le nom nettoyé.
-
-   CE QU'ON NE FAIT PAS. On ne découpe pas les noms multiples sur
-   « / » ou « · ». « Saint-Saëns / Wieniawski » reste une entrée
-   entière : découper fabriquerait de faux artistes solo et fausserait
-   les comptes. Même prudence qu'à la règle 24 — on rapproche les
-   graphies, jamais le sens.                                      */
-function artClef(a){
-  return String(a||'').replace(/\*/g,'').replace(/\s*\(\d+\)/g,'')
-                      .replace(/\s+/g,' ').trim().toLowerCase();
-}
-function artNom(a){
-  return String(a||'').replace(/\*/g,'').replace(/\s*\(\d+\)/g,'')
-                      .replace(/\s+/g,' ').trim();
-}
-
-// Discogs écrit « Various » sur les compilations ; le projet a aussi
-// saisi « Artistes variés ». Ce ne sont pas des interprètes : les
-// regrouper produirait une carte géante qui ne dit rien.
-const PAS_UN_ARTISTE=/^(various|various artists|artistes vari[ée]s?|divers)$/i;
-
-function rendreArtistes(){
-  const g=document.getElementById('vueArtistes'); g.innerHTML='';
-  const par={}; let compils=0;
-  liste.forEach(r=>{
-    const k=artClef(r.a); if(!k) return;
-    if(PAS_UN_ARTISTE.test(k)){ compils++; return; }
-    (par[k]||(par[k]={nom:artNom(r.a),n:0,v:0,d:[]}));
-    par[k].n++; par[k].v+=(r.m||0); par[k].d.push(r);
-  });
-  const cles=Object.keys(par).sort((x,y)=>
-    par[y].n-par[x].n || par[x].nom.localeCompare(par[y].nom,'fr'));
-
-  if(!cles.length){
-    g.innerHTML='<p class="rien">Aucun interprète nommé dans cette sélection.</p>';
-    return;
-  }
-  const choisir=(k,nom)=>{ fArt=k; fArtNom=nom; vue='mur'; majBarreVues(); rendre();
-    window.scrollTo({top:0,behavior:'smooth'}); };
-
-  // DEUX TRAITEMENTS, PARCE QUE DEUX BESOINS. Un interprète possédé
-  // plusieurs fois mérite une carte : on veut voir d'un coup ce qu'on
-  // a de lui. Un interprète unique n'a rien à comparer — 178 cartes
-  // identiques noieraient les 22 qui comptent. Il devient une
-  // pastille, cliquable tout de même.
-  const plusieurs=cles.filter(k=>par[k].n>1);
-  const seuls=cles.filter(k=>par[k].n===1)
-                  .sort((x,y)=>par[x].nom.localeCompare(par[y].nom,'fr'));
-
-  if(plusieurs.length){
-    const t=document.createElement('p'); t.className='art-titre';
-    t.textContent=plusieurs.length+' interprètes présents plusieurs fois';
-    g.appendChild(t);
-    const grille=document.createElement('div'); grille.className='art-grille';
-    plusieurs.forEach(k=>{
-      const a=par[k];
-      const b=document.createElement('button'); b.className='art-c';
-      // Trois pochettes suffisent à reconnaître un artiste d'un coup d'œil.
-      const vign=a.d.slice(0,3).map(r=>r.th
-        ? '<img loading="lazy" src="'+r.th+'" alt="">'
-        : '<div class="rien-p">sans<br>image</div>').join('');
-      b.innerHTML='<p class="art-n">'+esc(a.nom)+'</p>'+
-        '<div class="art-p">'+vign+'</div>'+
-        '<p class="art-m">'+a.n+' disques'+(a.v?' · '+arg(a.v):'')+'</p>';
-      b.onclick=()=>choisir(k,a.nom);
-      grille.appendChild(b);
-    });
-    g.appendChild(grille);
-  }
-  if(seuls.length){
-    const t=document.createElement('p'); t.className='art-titre';
-    t.textContent=seuls.length+' interprètes présents une seule fois';
-    g.appendChild(t);
-    const z=document.createElement('div'); z.className='art-seuls';
-    seuls.forEach(k=>{
-      const b=document.createElement('button');
-      b.className='art-s'; b.textContent=par[k].nom;
-      b.onclick=()=>choisir(k,par[k].nom);
-      z.appendChild(b);
-    });
-    g.appendChild(z);
-  }
-  if(compils){
-    const p=document.createElement('p'); p.className='art-note';
-    p.textContent=compils+(compils>1
-      ? ' compilations sans interprète nommé ne figurent pas ici.'
-      : ' compilation sans interprète nommé ne figure pas ici.');
-    g.appendChild(p);
-  }
-}
-
 function rendreCiel(){
   const svg=document.getElementById('cielSvg');
   const info=document.getElementById('cielInfo');
@@ -938,8 +838,7 @@ function rendreCiel(){
   const fams=[...new Set(pts.map(r=>r.f))].sort();
   document.getElementById('cielLg').innerHTML=
     fams.map(f=>'<i style="--pastille:'+teinte(f)+'">'+esc(f)+'</i>').join('')+
-    '<i style="--pastille:transparent">Le rayon suit le prix suggéré · '+
-    (liste.length-pts.length)+' disque(s) écarté(s), sans année ou sans statistiques</i>';
+    '<i style="--pastille:transparent">Le rayon suit le prix suggéré</i>';
 }
 
 /* ── LIGNE DU TEMPS ───────────────────────────────────────────
@@ -993,8 +892,8 @@ function ouvrir(i){
   const bArt=document.createElement('button');
   bArt.type='button'; bArt.className='fa-lien'; bArt.textContent=r.a;
   bArt.title='Voir tout ce que la collection contient de cet interprète';
-  bArt.onclick=()=>{ fArt=artClef(r.a); fArtNom=artNom(r.a);
-    voile.classList.remove('on'); vue='mur'; majBarreVues(); rendre();
+  bArt.onclick=()=>{ fArt=artNom(r.a);
+    voile.classList.remove('on'); rendre();
     window.scrollTo({top:0,behavior:'smooth'}); };
   zFa.appendChild(bArt);
   const d=[['Label et n°', r.k||'—'],['Famille',r.f]];
