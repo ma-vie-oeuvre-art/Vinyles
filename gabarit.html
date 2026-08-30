@@ -259,6 +259,35 @@ footer a{color:var(--poussiere)}
   .bac-p,.plein img,.temps-col button,.ciel .pt circle{transition:none!important}
   .carte{animation:none!important}
 }
+/* ── barre de filtres compacte, 30 août 2026 ─────────────── */
+.affiner{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.35rem 0}
+.affiner select{
+  font:inherit;font-size:.82rem;letter-spacing:.04em;
+  color:inherit;background:transparent;
+  border:1px solid currentColor;border-radius:999px;
+  padding:.3rem 1.6rem .3rem .8rem;opacity:.55;cursor:pointer;
+  appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.4'/></svg>");
+  background-repeat:no-repeat;background-position:right .6rem center;background-size:.6em;
+}
+.affiner select:hover{opacity:.85}
+/* un menu qui filtre se distingue d'un menu au repos */
+.affiner select.actif{opacity:1;font-weight:600}
+.affiner select option{background:#181613;color:#e8e2d8}
+.jetons{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
+.jetons:empty{margin:0}
+.jeton{
+  font-size:.78rem;letter-spacing:.04em;
+  border:1px solid currentColor;border-radius:999px;
+  padding:.25rem .5rem .25rem .75rem;opacity:.9;
+  display:inline-flex;align-items:center;gap:.45rem;
+}
+.jeton button{
+  font:inherit;line-height:1;color:inherit;background:none;
+  border:0;cursor:pointer;opacity:.6;padding:0 .15rem;
+}
+.jeton button:hover{opacity:1}
+.jeton.vider{border-style:dashed;opacity:.6;cursor:pointer}
 </style>
 </head>
 <body>
@@ -288,11 +317,15 @@ footer a{color:var(--poussiere)}
   </div>
 
   <div class="rangee"><span class="etiq">Bac</span><span id="bacs" style="display:contents"></span></div>
-  <div class="rangee"><span class="etiq">Famille</span><span id="familles" style="display:contents"></span></div>
-  <div class="rangee"><span class="etiq">Regroupement</span><span id="regroupements" style="display:contents"></span></div>
-  <div class="rangee"><span class="etiq">Format</span><span id="formats" style="display:contents"></span></div>
-  <div class="rangee"><span class="etiq">Pays</span><span id="pays" style="display:contents"></span></div>
-  <div class="rangee"><span class="etiq">Décennie</span><span id="decennies" style="display:contents"></span></div>
+  <div class="affiner" id="affiner">
+    <span class="etiq">Affiner</span>
+    <select id="mFam"  aria-label="Famille"></select>
+    <select id="mReg"  aria-label="Regroupement"></select>
+    <select id="mFmt"  aria-label="Format"></select>
+    <select id="mPays" aria-label="Pays du pressage"></select>
+    <select id="mDec"  aria-label="Décennie"></select>
+  </div>
+  <div class="jetons" id="jetons"></div>
   <nav class="vues" id="vues" aria-label="Façon de regarder la collection"></nav>
   <p class="compte" id="compte"></p>
   <p class="compte top" id="top"></p>
@@ -396,31 +429,79 @@ function puces(el, vals, get, set, compteurs){
 }
 const parFamille={}; D.forEach(r=>parFamille[r.f]=(parFamille[r.f]||0)+1);
 puces(document.getElementById('bacs'), Object.keys(totalBac).sort(), ()=>fBac, v=>fBac=v, totalBac);
-puces(document.getElementById('familles'), Object.keys(parFamille).sort(), ()=>fFam, v=>fFam=v, parFamille);
-// ── LES QUATRE AXES AJOUTÉS LE 30 AOÛT 2026 ──────────────────
-// « fa » est un TABLEAU : un disque appartient à plusieurs
-// regroupements à la fois. C'est la différence avec « f ».
+// ── BARRE COMPACTE, 30 AOÛT 2026 ─────────────────────────────
+// Cinq axes en menus plutôt qu'en rangées : même information,
+// une ligne au lieu de cinq. « fa » reste un TABLEAU — un disque
+// appartient à plusieurs regroupements à la fois.
 var fReg='', fFmt='', fPays='', fDec='';
 const parReg={}; D.forEach(r=>(r.fa||[]).forEach(x=>parReg[x]=(parReg[x]||0)+1));
 const parFmt={}; D.forEach(r=>{ if(r.fp) parFmt[r.fp]=(parFmt[r.fp]||0)+1; });
 const parPays={}; D.forEach(r=>{ if(r.pa) parPays[r.pa]=(parPays[r.pa]||0)+1; });
 const parDec={}; D.forEach(r=>{ if(r.dc) parDec[r.dc]=(parDec[r.dc]||0)+1; });
-// Regroupements et formats : les plus nombreux d'abord, c'est ce
-// qu'on cherche. Pays : mêmes règles, mais plafonné à 12 — il y a
-// une vingtaine de pays et la rangée deviendrait illisible.
-// Décennies : ordre chronologique, évidemment.
-puces(document.getElementById('regroupements'),
-      Object.keys(parReg).sort((a,b)=>parReg[b]-parReg[a]),
-      ()=>fReg, v=>fReg=v, parReg);
-puces(document.getElementById('formats'),
-      Object.keys(parFmt).sort((a,b)=>parFmt[b]-parFmt[a]),
-      ()=>fFmt, v=>fFmt=v, parFmt);
-puces(document.getElementById('pays'),
-      Object.keys(parPays).sort((a,b)=>parPays[b]-parPays[a]).slice(0,12),
-      ()=>fPays, v=>fPays=v, parPays);
-puces(document.getElementById('decennies'),
-      Object.keys(parDec).sort(),
-      ()=>fDec, v=>fDec=v, parDec);
+
+// Chaque menu connaît son étiquette, ses valeurs, et comment
+// lire et écrire le filtre correspondant. Tout le reste suit.
+const AXES=[
+  {id:'mFam', nom:'Famille',      src:()=>parFamille, tri:'nom',
+   get:()=>fFam,  set:v=>fFam=v},
+  {id:'mReg', nom:'Regroupement', src:()=>parReg,     tri:'nb',
+   get:()=>fReg,  set:v=>fReg=v},
+  {id:'mFmt', nom:'Format',       src:()=>parFmt,     tri:'nb',
+   get:()=>fFmt,  set:v=>fFmt=v},
+  {id:'mPays',nom:'Pays',         src:()=>parPays,    tri:'nb',
+   get:()=>fPays, set:v=>fPays=v},
+  {id:'mDec', nom:'Décennie',     src:()=>parDec,     tri:'nom',
+   get:()=>fDec,  set:v=>fDec=v},
+];
+
+// Les valeurs à zéro sont ÉCARTÉES du menu plutôt que grisées :
+// dans une liste déroulante, une option morte se clique quand même.
+// Sauf la valeur active, qui doit rester visible pour se retirer.
+function remplirMenu(a, compte){
+  const el=document.getElementById(a.id); if(!el) return;
+  const actif=a.get();
+  const cles=Object.keys(a.src()).filter(k=>(compte[k]||0)>0||k===actif);
+  cles.sort(a.tri==='nb'
+    ? (x,y)=>(compte[y]||0)-(compte[x]||0)||x.localeCompare(y,'fr')
+    : (x,y)=>x.localeCompare(y,'fr'));
+  el.innerHTML='<option value="">'+a.nom+'</option>'+
+    cles.map(k=>'<option value="'+esc(k)+'"'+(k===actif?' selected':'')+'>'+
+                esc(k)+' · '+(compte[k]||0)+'</option>').join('');
+  el.classList.toggle('actif', !!actif);
+}
+
+AXES.forEach(a=>{
+  const el=document.getElementById(a.id); if(!el) return;
+  el.addEventListener('change',()=>{ a.set(el.value); rendre(); });
+});
+
+// Les jetons disent l'état courant en toutes lettres et permettent
+// de défaire un filtre sans rouvrir le menu qui l'a posé.
+function majJetons(){
+  const z=document.getElementById('jetons'); if(!z) return;
+  const actifs=[];
+  if(fBac) actifs.push({t:'Bac '+fBac, off:()=>fBac=''});
+  AXES.forEach(a=>{ if(a.get()) actifs.push({t:a.get(), off:()=>a.set('')}); });
+  z.innerHTML='';
+  actifs.forEach(j=>{
+    const s=document.createElement('span'); s.className='jeton';
+    s.textContent=j.t;
+    const b=document.createElement('button');
+    b.type='button'; b.textContent='×';
+    b.setAttribute('aria-label','Retirer le filtre '+j.t);
+    b.addEventListener('click',()=>{ j.off(); rendre(); });
+    s.appendChild(b); z.appendChild(s);
+  });
+  if(actifs.length>1){
+    const t=document.createElement('span');
+    t.className='jeton vider'; t.textContent='Tout effacer';
+    t.setAttribute('role','button'); t.tabIndex=0;
+    const vider=()=>{ fBac=''; AXES.forEach(a=>a.set('')); rendre(); };
+    t.addEventListener('click',vider);
+    t.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();vider();} });
+    z.appendChild(t);
+  }
+}
 
 function filtrer(){
   const t=q.value.trim().toLowerCase();
@@ -472,11 +553,12 @@ function majCompteurs(){
     b.classList.toggle('nul', n===0 && b.dataset.v!==fBac && b.dataset.v!==fFam);
   });
   poser(document.getElementById('bacs'), cb);
-  poser(document.getElementById('familles'), cf);
-  poser(document.getElementById('regroupements'), cReg);
-  poser(document.getElementById('formats'), cFmt);
-  poser(document.getElementById('pays'), cPays);
-  poser(document.getElementById('decennies'), cDec);
+  // Les quatre axes ne sont plus des rangées mais des menus :
+  // on les reconstruit avec les comptes recalculés, et on
+  // rafraîchit les jetons dans la foulée.
+  const comptes={mFam:cf, mReg:cReg, mFmt:cFmt, mPays:cPays, mDec:cDec};
+  AXES.forEach(a=>remplirMenu(a, comptes[a.id]||{}));
+  majJetons();
 }
 
 function rendre(){
