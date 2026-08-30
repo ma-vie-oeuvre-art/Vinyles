@@ -289,6 +289,10 @@ footer a{color:var(--poussiere)}
 
   <div class="rangee"><span class="etiq">Bac</span><span id="bacs" style="display:contents"></span></div>
   <div class="rangee"><span class="etiq">Famille</span><span id="familles" style="display:contents"></span></div>
+  <div class="rangee"><span class="etiq">Regroupement</span><span id="regroupements" style="display:contents"></span></div>
+  <div class="rangee"><span class="etiq">Format</span><span id="formats" style="display:contents"></span></div>
+  <div class="rangee"><span class="etiq">Pays</span><span id="pays" style="display:contents"></span></div>
+  <div class="rangee"><span class="etiq">Décennie</span><span id="decennies" style="display:contents"></span></div>
   <nav class="vues" id="vues" aria-label="Façon de regarder la collection"></nav>
   <p class="compte" id="compte"></p>
   <p class="compte top" id="top"></p>
@@ -393,11 +397,38 @@ function puces(el, vals, get, set, compteurs){
 const parFamille={}; D.forEach(r=>parFamille[r.f]=(parFamille[r.f]||0)+1);
 puces(document.getElementById('bacs'), Object.keys(totalBac).sort(), ()=>fBac, v=>fBac=v, totalBac);
 puces(document.getElementById('familles'), Object.keys(parFamille).sort(), ()=>fFam, v=>fFam=v, parFamille);
+// ── LES QUATRE AXES AJOUTÉS LE 30 AOÛT 2026 ──────────────────
+// « fa » est un TABLEAU : un disque appartient à plusieurs
+// regroupements à la fois. C'est la différence avec « f ».
+var fReg='', fFmt='', fPays='', fDec='';
+const parReg={}; D.forEach(r=>(r.fa||[]).forEach(x=>parReg[x]=(parReg[x]||0)+1));
+const parFmt={}; D.forEach(r=>{ if(r.fp) parFmt[r.fp]=(parFmt[r.fp]||0)+1; });
+const parPays={}; D.forEach(r=>{ if(r.pa) parPays[r.pa]=(parPays[r.pa]||0)+1; });
+const parDec={}; D.forEach(r=>{ if(r.dc) parDec[r.dc]=(parDec[r.dc]||0)+1; });
+// Regroupements et formats : les plus nombreux d'abord, c'est ce
+// qu'on cherche. Pays : mêmes règles, mais plafonné à 12 — il y a
+// une vingtaine de pays et la rangée deviendrait illisible.
+// Décennies : ordre chronologique, évidemment.
+puces(document.getElementById('regroupements'),
+      Object.keys(parReg).sort((a,b)=>parReg[b]-parReg[a]),
+      ()=>fReg, v=>fReg=v, parReg);
+puces(document.getElementById('formats'),
+      Object.keys(parFmt).sort((a,b)=>parFmt[b]-parFmt[a]),
+      ()=>fFmt, v=>fFmt=v, parFmt);
+puces(document.getElementById('pays'),
+      Object.keys(parPays).sort((a,b)=>parPays[b]-parPays[a]).slice(0,12),
+      ()=>fPays, v=>fPays=v, parPays);
+puces(document.getElementById('decennies'),
+      Object.keys(parDec).sort(),
+      ()=>fDec, v=>fDec=v, parDec);
 
 function filtrer(){
   const t=q.value.trim().toLowerCase();
   let s=D.filter(r=>
     (!fBac||r.b===fBac) && (!fFam||r.f===fFam) &&
+    // fa est un tableau : on teste l'appartenance, pas l'égalité.
+    (!fReg||(r.fa||[]).includes(fReg)) && (!fFmt||r.fp===fFmt) &&
+    (!fPays||r.pa===fPays) && (!fDec||r.dc===fDec) &&
     // la recherche couvre AUSSI le label et le n° de catalogue : c'est
     // ce qui est imprimé sur la pochette qu'on tient dans les mains.
     (!t || (r.t+' '+r.a+' '+r.f+' '+r.k+' '+r.b).toLowerCase().includes(t)));
@@ -416,9 +447,25 @@ function filtrer(){
 // qui n'existent pas dans le bac choisi — c'est ce qui donnait
 // « TRADITIONNEL / MONDE 1 » et zéro résultat.
 function majCompteurs(){
-  const cb={}, cf={};
-  D.forEach(r=>{ if(!fFam||r.f===fFam) cb[r.b]=(cb[r.b]||0)+1;
-                 if(!fBac||r.b===fBac) cf[r.f]=(cf[r.f]||0)+1; });
+  const cb={}, cf={}, cReg={}, cFmt={}, cPays={}, cDec={};
+  // Un disque compte pour un axe s'il satisfait TOUS LES AUTRES
+  // filtres actifs. Sans ça, un bouton annonce « 12 » et le clic
+  // ne rend rien — le défaut déjà corrigé pour Bac et Famille.
+  const ok=(r,sauf)=>
+       (sauf==='b'  || !fBac  || r.b===fBac)
+    && (sauf==='f'  || !fFam  || r.f===fFam)
+    && (sauf==='fa' || !fReg  || (r.fa||[]).includes(fReg))
+    && (sauf==='fp' || !fFmt  || r.fp===fFmt)
+    && (sauf==='pa' || !fPays || r.pa===fPays)
+    && (sauf==='dc' || !fDec  || r.dc===fDec);
+  D.forEach(r=>{
+    if(ok(r,'b'))  cb[r.b]=(cb[r.b]||0)+1;
+    if(ok(r,'f'))  cf[r.f]=(cf[r.f]||0)+1;
+    if(ok(r,'fa')) (r.fa||[]).forEach(x=>cReg[x]=(cReg[x]||0)+1);
+    if(ok(r,'fp') && r.fp) cFmt[r.fp]=(cFmt[r.fp]||0)+1;
+    if(ok(r,'pa') && r.pa) cPays[r.pa]=(cPays[r.pa]||0)+1;
+    if(ok(r,'dc') && r.dc) cDec[r.dc]=(cDec[r.dc]||0)+1;
+  });
   const poser=(el,src)=>[...el.children].forEach(b=>{
     const n=src[b.dataset.v]||0;
     const s=b.querySelector('.n'); if(s) s.textContent=n;
@@ -426,6 +473,10 @@ function majCompteurs(){
   });
   poser(document.getElementById('bacs'), cb);
   poser(document.getElementById('familles'), cf);
+  poser(document.getElementById('regroupements'), cReg);
+  poser(document.getElementById('formats'), cFmt);
+  poser(document.getElementById('pays'), cPays);
+  poser(document.getElementById('decennies'), cDec);
 }
 
 function rendre(){
