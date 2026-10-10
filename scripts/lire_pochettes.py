@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import tempfile
+from pathlib import Path
 import urllib.parse
 import urllib.request
 
@@ -34,12 +35,15 @@ def records(token):
             return
 
 def scan(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "VinylesInventaire/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        mime = resp.headers.get("Content-Type", "")
-        if not mime.startswith("image/"):
-            raise ValueError("attachment is not an image")
-        data = resp.read(5_000_001)
+    if isinstance(url, Path):
+        data = url.read_bytes()
+    else:
+        req = urllib.request.Request(url, headers={"User-Agent": "VinylesInventaire/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            mime = resp.headers.get("Content-Type", "")
+            if not mime.startswith("image/"):
+                raise ValueError("attachment is not an image")
+            data = resp.read(5_000_001)
     if len(data) > 5_000_000:
         raise ValueError("image too large")
     with tempfile.NamedTemporaryFile(suffix=".img") as f:
@@ -60,7 +64,12 @@ def main():
     for row in records(token):
         f = row.get("fields", {})
         image = f.get("Photos personnelles") or f.get("Front Cover") or []
-        if not image or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
+        source_match = re.search(r"fichier source: ([^\\n]+)", f.get("Transcription source", ""))
+        root = Path(__file__).resolve().parents[1]
+        local = (root / source_match.group(1)).resolve() if source_match else None
+        if local and (root not in local.parents or not local.is_file()):
+            local = None
+        if (not image and not local) or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
             continue
         existing = f.get("Transcription source", "")
         if "[OCR pochette]" in existing:
@@ -69,7 +78,7 @@ def main():
             break
         checked += 1
         try:
-            text = scan(image[0]["url"])
+            text = scan(local or image[0]["url"])
             if not text:
                 print(f"{row['id']}: texte illisible; fiche inchangée")
                 continue

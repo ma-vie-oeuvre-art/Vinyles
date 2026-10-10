@@ -5,18 +5,20 @@ on:
     paths:
       - '.github/workflows/enrichir-vinyles.yml'
       - 'scripts/**'
+      - 'inbox/**'
+      - 'photos/**'
   workflow_dispatch:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '*/5 * * * *'
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: enrichissement-vinyles
   cancel-in-progress: false
 jobs:
   enrichir:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,6 +29,11 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
         run: python scripts/verifier_configuration.py
+      - name: Importer automatiquement les lots de photos
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/importer_photos.py
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
@@ -39,6 +46,11 @@ jobs:
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/lire_pochettes.py
+      - name: Reconnaître les albums depuis les photos
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: python scripts/reconnaitre_albums.py
       - name: Rechercher des candidats Discogs pour les fiches Dicté
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
