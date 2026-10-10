@@ -35,7 +35,7 @@ jobs:
       - name: Extraire le texte des pochettes dans Airtable
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-          OCR_BATCH_SIZE: '20'
+          OCR_BATCH_SIZE: '40'
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/lire_pochettes.py

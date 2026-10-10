@@ -88,7 +88,7 @@ def main():
         if not (catno or (artist and title) or key or ocr):
             print(f"{row['id']}: données insuffisantes; inchangé")
             continue
-        params = {"type": "release", "per_page": 8}
+        params = {"type": "release", "format": "Vinyl", "per_page": 50}
         if catno and re.search(r"[A-Za-z]", catno):
             params["catno"] = catno
             if label:

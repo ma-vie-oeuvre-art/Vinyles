@@ -51,7 +51,7 @@ def main():
             if not candidates:
                 title = f.get('Titre', '').split(' — ')[0]
                 artist = f.get('Artiste', '').split(' / ')[0]
-                params = {'type': 'release', 'per_page': 25, 'release_title': title}
+                params = {'type': 'release', 'format': 'Vinyl', 'per_page': 50, 'release_title': title}
                 if norm(artist) not in ('ARTISTESVARIES', 'AUDIOFIDELITY', 'VARIOUS', ''):
                     params['artist'] = artist
                 search = request_json('https://api.discogs.com/database/search?' + urllib.parse.urlencode(params), dg)
