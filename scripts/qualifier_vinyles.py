@@ -13,7 +13,7 @@ def norm(text):
 
 def album_norm(text):
     # Descripteurs typographiques du recto, pas variantes de catalogue.
-    text = str(text).split(' — ')[0].split(' (')[0]
+    text = str(text)
     text = re.sub(r'\bStereophonic\b', '', text, flags=re.I)
     text = re.sub(r'\bVolumes?\b', 'Vol', text, flags=re.I)
     return norm(text)
