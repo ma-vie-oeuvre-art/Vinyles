@@ -14,10 +14,13 @@ def words(text):
     text = unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode().upper()
     return re.findall(r'[A-Z0-9]+', text)
 
+def album_title(title):
+    return re.sub(r'\s*\(([^)]*)\)\s*$', lambda match: match[0] if re.search(r'\b(?:vol\.?|volume|part|[IVX]+|[0-9]+)\b', match[1], re.I) else '', title).strip()
+
 def supported(ocr, credit, title):
     visible = set(words(ocr))
-    title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
-    title_words = [w for w in words(title) if len(w) >= 3 and w not in {'THE', 'AND', 'VOL'}]
+    title = album_title(title)
+    title_words = [w for w in words(title) if (len(w) >= 3 or w.isdigit() or w in {'I','II','III','IV','V','VI','VII','VIII','IX','X'}) and w not in {'THE', 'AND', 'VOL'}]
     artist_words = [w for w in words(credit) if len(w) >= 3 and w not in {'THE', 'AND', 'HIS', 'HER', 'ORCHESTRA', 'ORCHESTRE', 'WITH'}]
     if not title_words or not all(w in visible for w in title_words):
         return False
@@ -47,11 +50,11 @@ def collect(result, ocr, albums, candidates, catalogue=None):
         credit, sep, title = str(item.get('title', '')).rpartition(' - ')
         if not sep or not supported(ocr, credit, title):
             continue
-        title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
+        title = album_title(title)
         master = item.get('master_id')
         key = ('master', int(master)) if master else (tuple(words(credit)), tuple(words(title)))
         albums[key] = (credit, title)
-        candidates[item['id']] = {'release_id': item['id'], 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
+        candidates[item['id']] = {'release_id': item['id'], 'master_id': item.get('master_id'), 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
 
 def neural_evidence(source):
     match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
@@ -102,6 +105,24 @@ def main():
         ocr = re.sub(r'\[OCR neural regions\] [^\n]+', '', ocr)
         if not ocr:
             continue
+        # Re-evaluate recorded evidence before making more network requests.
+        # This also applies fixes immediately to a result scheduled for tomorrow.
+        prior_albums, prior_candidates = {}, {}
+        try:
+            prior = json.loads(f.get('Candidats Discogs') or '[]')
+        except (ValueError, TypeError):
+            prior = []
+        collect({'results': [{'id': item['release_id'], 'title': item['titre'], 'master_id': item.get('master_id'), 'catno': item.get('catno')} for item in prior if isinstance(item, dict) and item.get('release_id') and item.get('titre')]}, ocr, prior_albums, prior_candidates)
+        primary = {key: value for key, value in prior_albums.items() if prominent and supported(prominent, *value)}
+        specific = {key: value for key, value in primary.items() if set(words(value[1])) - set(words(value[0])) - {'THE', 'AND', 'VOL'}}
+        if specific:
+            primary = specific
+        if len(primary) == 1:
+            artist, title = next(iter(primary.values()))
+            retained = [item for item in prior if supported(prominent, *str(item.get('titre', '')).rpartition(' - ')[::2])]
+            request_json(endpoint + '/' + row['id'], at, {'fields': {'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin.'}})
+            print(f'{row["id"]}: album reconnu depuis les preuves conservées, sans nouvelle recherche', flush=True)
+            continue
         if not should_search(ocr, f.get('Diagnostic', ''), today):
             continue
         if checked >= 20:
@@ -143,7 +164,7 @@ def main():
             if len(strong) == 1:
                 albums = strong
                 artist, title = next(iter(strong.values()))
-                candidates = {key: value for key, value in candidates.items() if value['titre'].rpartition(' - ')[0] == artist and re.sub(r'\s*\([^)]*\)\s*$', '', value['titre'].rpartition(' - ')[2]) == title}
+                candidates = {key: value for key, value in candidates.items() if value['titre'].rpartition(' - ')[0] == artist and album_title(value['titre'].rpartition(' - ')[2]) == title}
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
         if len(albums) == 1:
             artist, title = next(iter(albums.values()))
