@@ -115,7 +115,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v7:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v8:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -327,7 +327,7 @@ def run():
             dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
             masters = {}
             for query in queries:
-                result = request_json('https://api.discogs.com/database/search?' + urllib.parse.urlencode({'q': query[:100], 'type': 'master', 'format': 'Vinyl', 'per_page': 100}), dg)
+                result = request_json('https://api.discogs.com/database/search?' + urllib.parse.urlencode({'q': query[:100], 'type': 'master', 'per_page': 100}), dg)
                 time.sleep(1.2)
                 for item in result.get('results', []):
                     if item.get('cover_image') and ' - ' in item.get('title', ''):
