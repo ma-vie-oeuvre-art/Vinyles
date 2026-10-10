@@ -34,3 +34,10 @@ jobs:
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/enrichir_vinyles.py
+      - name: Récupérer les pochettes des pressages confirmés du bac B-08
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          COVER_BATCH_SIZE: '100'
+          DRY_RUN: '0'
+        run: python scripts/recuperer_pochettes_confirmees.py
