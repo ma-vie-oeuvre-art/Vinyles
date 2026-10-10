@@ -103,9 +103,6 @@ def main():
                     existing[pos] = fresh
                     updated += 1
                 continue
-            if not old.get("th") and cover:
-                existing[pos] = {**old, "th": cover, "rc": cover, "vs": as_url(r.get("Back Cover")) or old.get("vs"), "d": str(release) if verified else old.get("d", "")}
-                updated += 1
             continue
         added.append(item)
         by_key[key] = len(existing) + len(added) - 1
