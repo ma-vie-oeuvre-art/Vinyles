@@ -4,12 +4,15 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/enrichir-vinyles.yml'
-      - 'scripts/recuperer_pochettes_confirmees.py'
+      - 'scripts/**'
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
 permissions:
   contents: read
+concurrency:
+  group: enrichissement-vinyles
+  cancel-in-progress: false
 jobs:
   enrichir:
     runs-on: ubuntu-latest
@@ -19,6 +22,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Vérifier la configuration
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: python scripts/verifier_configuration.py
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
@@ -46,3 +54,4 @@ jobs:
           COVER_BATCH_SIZE: '100'
           DRY_RUN: '0'
         run: python scripts/recuperer_pochettes_confirmees.py
+
