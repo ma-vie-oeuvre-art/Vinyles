@@ -50,7 +50,8 @@ def main():
             key = (bac, position)
             if key in existing:
                 continue
-            url = f'https://raw.githubusercontent.com/{repo}/{os.environ["GITHUB_SHA"]}/{item["path"]}'
+            source_sha = os.environ.get('PHOTO_SOURCE_SHA') or os.environ['GITHUB_SHA']
+            url = f'https://raw.githubusercontent.com/{repo}/{source_sha}/{item["path"]}'
             fields = {'Clé': f'{bac}-{position:03}', 'Bac': bac, 'Ordre dans le bac': position,
                       'Statut': 'Dicté', 'Photos personnelles': [{'url': url, 'filename': photo.name}],
                       'Transcription source': f'Photo personnelle — fichier source: {item["path"]}\nTraitement automatique GitHub; pressage précis reporté au besoin.'}

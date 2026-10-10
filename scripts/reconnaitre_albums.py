@@ -34,6 +34,24 @@ def should_search(ocr, diagnostic, today):
     retry = re.search(r'Recherche album suivante : (\d{4}-\d{2}-\d{2})', diagnostic)
     return not retry or retry[1] <= today.isoformat()
 
+def catalogues(ocr):
+    # Search hints only: never assign a physical catalogue from this extraction.
+    known = {'CL','CS','CRL','DL','UAS','UAL','MS','LS','LP','ST','SF','PS','PAS','SD','SP','SR','LSP','LM','CPS','SPC','RS','SPS','SPFL'}
+    return list(dict.fromkeys(prefix + digits for prefix, digits in
+        re.findall(r'\b([A-Z]{1,4})[ -]*(\d{3,7})\b', ocr.upper()) if prefix in known))[:3]
+
+def collect(result, ocr, albums, candidates, catalogue=None):
+    for item in result.get('results', []):
+        if catalogue and re.sub(r'[^A-Z0-9]', '', str(item.get('catno', '')).upper()) != catalogue:
+            continue
+        credit, sep, title = str(item.get('title', '')).rpartition(' - ')
+        if not sep or not supported(ocr, credit, title):
+            continue
+        title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
+        key = (tuple(words(credit)), tuple(words(title)))
+        albums[key] = (credit, title)
+        candidates[item['id']] = {'release_id': item['id'], 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
+
 def main():
     at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
     dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
@@ -52,6 +70,8 @@ def main():
     today = datetime.now(ZoneInfo('America/Toronto')).date()
     cache = {}
     checked = 0
+    last_call = 0.0
+    rows.sort(key=lambda row: (row['fields'].get('Statut') != 'Dicté', row['fields'].get('Bac', ''), row['fields'].get('Ordre dans le bac', 0)))
     for row in rows:
         f = row['fields']
         if f.get('Ne pas retraiter') or f.get('Discogs release_id'):
@@ -70,21 +90,26 @@ def main():
         queries = list(dict.fromkeys(lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
         albums = {}
         candidates = {}
-        for query in queries[:10]:
-            params = {'q': query[:100], 'type': 'release', 'format': 'Vinyl', 'per_page': 30}
+        def search(params):
+            nonlocal last_call
             url = 'https://api.discogs.com/database/search?' + urllib.parse.urlencode(params)
             if url not in cache:
+                time.sleep(max(0, 2.2 - (time.monotonic() - last_call)))
+                last_call = time.monotonic()
                 cache[url] = request_json(url, dg)
-                time.sleep(2.2)
-            result = cache[url]
-            for item in result.get('results', []):
-                credit, sep, title = str(item.get('title', '')).rpartition(' - ')
-                if not sep or not supported(ocr, credit, title):
-                    continue
-                title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
-                key = (tuple(words(credit)), tuple(words(title)))
-                albums[key] = (credit, title)
-                candidates[item['id']] = {'release_id': item['id'], 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
+            return cache[url]
+        hints = catalogues(ocr)
+        complete = True
+        for hint in hints:
+            result = search({'catno': hint, 'type': 'release', 'format': 'Vinyl', 'per_page': 100})
+            complete = complete and int(result.get('pagination', {}).get('pages', 1)) <= 1
+            collect(result, ocr, albums, candidates, hint)
+        # Stop only when all exact catalogue results support a single visible album.
+        # Ambiguous, partial or unsuccessful catalogue searches keep the full fallback.
+        if not (hints and complete and len(albums) == 1):
+            for query in queries[:10]:
+                result = search({'q': query[:100], 'type': 'release', 'format': 'Vinyl', 'per_page': 30})
+                collect(result, ocr, albums, candidates)
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
         if len(albums) == 1:
             artist, title = next(iter(albums.values()))
