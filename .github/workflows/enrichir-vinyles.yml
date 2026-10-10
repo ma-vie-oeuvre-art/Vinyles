@@ -1,0 +1,24 @@
+name: Enrichissement différé des vinyles
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: read
+jobs:
+  enrichir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rechercher des candidats Discogs pour les fiches Dicté
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          BATCH_SIZE: '20'
+        run: |
+          test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
+          python scripts/enrichir_vinyles.py
