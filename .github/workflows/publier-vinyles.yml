@@ -1,0 +1,36 @@
+name: Publication incrémentale Vinyles
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '42 * * * *'
+permissions:
+  contents: write
+concurrency:
+  group: publication-vinyles
+  cancel-in-progress: false
+jobs:
+  publication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synchroniser les fiches validées
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DRY_RUN: '0'
+        run: python scripts/publier_vinyles.py
+      - name: Publier les modifications réelles
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "Aucune nouvelle fiche prête"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Publier les nouveaux vinyles validés depuis Airtable"
+          git push
