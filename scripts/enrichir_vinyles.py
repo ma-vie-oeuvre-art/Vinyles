@@ -20,6 +20,7 @@ FIELDS = {
     "numero": "N° catalogue",
     "candidats": "Candidats Discogs",
     "diagnostic": "Diagnostic",
+    "ne_pas_retraiter": "Ne pas retraiter",
 }
 LIMIT = max(1, min(100, int(os.getenv("BATCH_SIZE", "20"))))
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
@@ -36,6 +37,9 @@ def request_json(url, headers, data=None, method=None):
 def main():
     token = os.environ["AIRTABLE_TOKEN"]
     discogs_token = os.environ.get("DISCOGS_TOKEN", "")
+    if not discogs_token:
+        print("DISCOGS_TOKEN absent : arrêt sans modifier Airtable", file=sys.stderr)
+        return
     airtable_headers = {"Authorization": f"Bearer {token}",
                        "Content-Type": "application/json"}
     discogs_headers = {"User-Agent": "VinylesInventaire/1.0 (personal catalog)",
@@ -54,7 +58,7 @@ def main():
         for row in page.get("records", []):
             fields = row.get("fields", {})
             # Do not reprocess a row where candidates already exist.
-            if not fields.get(FIELDS["candidats"]):
+            if (not fields.get(FIELDS["candidats"]) and not fields.get(FIELDS["ne_pas_retraiter"]) and (fields.get(FIELDS["numero"]) or (fields.get(FIELDS["artiste"]) and fields.get(FIELDS["titre"])))):
                 selected.append(row)
                 if len(selected) >= LIMIT:
                     break
