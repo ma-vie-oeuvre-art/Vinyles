@@ -40,3 +40,8 @@ assert needs_review({'Artiste':'Artistes variés','Titre':'Existing title'})
 assert not needs_review({'Artiste':'Artist','Titre':'Title','Discogs référence release_id':'99'})
 assert not needs_review({'Artiste':'Artistes variés','Titre':'Existing title','Preuve d\'identification':'Validation humaine'})
 print('Reprise des références manquantes vérifiée')
+
+assert c.printed_number_matches({'Transcription source':"[OCR neural texte] Series N' 3"}, {'titre':'Artist - Series N° 3'})
+assert not c.printed_number_matches({'Transcription source':"[OCR neural texte] Series N\' 3"}, {'titre':'Artist - Series N° 6'})
+assert c.printed_number_matches({'Transcription source':'[OCR neural texte] Main heading'}, {'titre':'Artist - Series N° 6'})
+print('Numéros de série imprimés vérifiés')

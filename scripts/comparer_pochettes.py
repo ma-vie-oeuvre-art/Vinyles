@@ -104,6 +104,17 @@ def main_heading(fields, candidates):
         return None
     return ordered[0][1]
 
+def printed_number_matches(fields,candidate):
+    """A repeated series design cannot override its printed volume number."""
+    source=fields.get('Transcription source','')
+    match=re.search(r'\[OCR neural texte\] ([^\n]+)',source)
+    if not match:
+        return True
+    pattern=r"\b(?:N[°'’O]?|NO|VOL(?:UME)?|NUMBER)\s*(\d{1,2})\b"
+    printed=set(re.findall(pattern,match[1],re.I))
+    title_numbers=set(re.findall(pattern,candidate.get('titre','').partition(' - ')[2],re.I))
+    return len(printed)!=1 or not title_numbers or bool(printed & title_numbers)
+
 def album_key(candidate):
     master = candidate.get('master_id')
     if str(master).isdigit() and int(master) > 0:
@@ -115,7 +126,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v9:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v10:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -376,6 +387,8 @@ def run():
             heading = main_heading(f, candidates + master_candidates)
             if heading:
                 scores = [(0, heading)]
+        scores = [(score,candidate) for score,candidate in scores if printed_number_matches(f,candidate)]
+        print('Correspondances de pochettes: ' + json.dumps([(score,candidate.get('titre')) for score,candidate in scores],ensure_ascii=False),flush=True)
         scores.sort(key=lambda item: item[0], reverse=True)
         groups = {}
         for score, c in scores:
