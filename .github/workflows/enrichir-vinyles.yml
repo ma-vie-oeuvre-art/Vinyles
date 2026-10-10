@@ -14,6 +14,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Installer le moteur de lecture des pochettes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra
+          python -m py_compile scripts/lire_pochettes.py scripts/enrichir_vinyles.py
+      - name: Extraire le texte des pochettes dans Airtable
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          OCR_BATCH_SIZE: '20'
+        run: |
+          test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
+          python scripts/lire_pochettes.py
       - name: Rechercher des candidats Discogs pour les fiches Dicté
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
