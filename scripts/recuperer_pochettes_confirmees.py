@@ -102,12 +102,13 @@ def main():
                 if os.getenv("DRY_RUN", "1") == "1":
                     print(f"SIMULATION: {release_id} -> {image}")
                 else:
-                    fields = {"Front Cover": [{"url": image}]}
+                    proxy = "https://images.weserv.nl/?url=" + urllib.parse.quote(image, safe="") + "&output=jpg"
+                    fields = {"Front Cover": [{"url": proxy}]}
                     if candidate:
                         fields["Diagnostic"] = "Pochette Discogs indicative : artiste, titre, format et catalogue concordants; pressage physique non confirmé."
                     patch(f"{API}/{row['id']}", at, fields)
                     fresh = get(f"{API}/{row['id']}", at)
-                    if not fresh.get("fields", {}).get("Front Cover"):
+                    if not any(a.get("size") for a in fresh.get("fields", {}).get("Front Cover", [])):
                         raise ValueError("La pièce jointe n'est pas confirmée dans Airtable")
                     updated += 1
                     print(f"IMAGE CONFIRMÉE: {release_id}")
