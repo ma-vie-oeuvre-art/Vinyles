@@ -34,3 +34,9 @@ print('Regression checks passed: main heading, artist ambiguity, volume, OCR sep
 compound={'titre':'Given Surname - Long Main Title - Secondary Songs','release_id':10}
 assert c.main_heading(source([region('SURNAME',100),region('Long Main Title',70),region('Secondary Songs',32)]),[compound])==compound
 print('Compound title and smaller subtitle verified.')
+
+from lire_pochettes_neural import needs_review
+assert needs_review({'Artiste':'Artistes variés','Titre':'Existing title'})
+assert not needs_review({'Artiste':'Artist','Titre':'Title','Discogs référence release_id':'99'})
+assert not needs_review({'Artiste':'Artistes variés','Titre':'Existing title','Preuve d\'identification':'Validation humaine'})
+print('Reprise des références manquantes vérifiée')

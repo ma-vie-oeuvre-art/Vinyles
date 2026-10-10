@@ -29,6 +29,8 @@ def needs_review(fields):
         return False
     if not fields.get('Artiste') or not fields.get('Titre'):
         return True
+    if not str(fields.get('Discogs référence release_id','')).isdigit():
+        return True
     artist = re.sub(r'\s*\(\d+\)\s*$', '', fields['Artiste']).strip('* ')
     return '[OCR pochette]' in fields.get('Transcription source', '') and words(artist) == words(fields['Titre'])
 

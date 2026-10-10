@@ -115,7 +115,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v8:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v9:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -169,7 +169,7 @@ def select():
                 canon = canonical_candidate(f) if known else None
                 if known and canon and canonical_marker(canon) not in f.get('Transcription source',''):
                     rows.append(row)
-                elif not known and any(c.get('cover_url') for c in candidates) and should_compare(f):
+                elif (not known or not str(f.get('Discogs référence release_id','')).isdigit()) and should_compare(f):
                     rows.append(row)
             except (ValueError, TypeError):
                 continue
@@ -246,7 +246,7 @@ def run():
         f = request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers())['fields']
         if f.get("Preuve d'identification") == 'Validation humaine' or f.get('Ne pas retraiter') or f.get('Discogs release_id'):
             continue
-        if f.get('Artiste') and f.get('Titre'):
+        if f.get('Artiste') and f.get('Titre') and canonical_candidate(f):
             candidate = canonical_candidate(f)
             if candidate and canonical_marker(candidate) not in f.get('Transcription source',''):
                 updates = canonical_fields(candidate)
@@ -263,11 +263,19 @@ def run():
             continue
         match = re.search(r'fichier source: ([^\n]+)', f.get('Transcription source', ''))
         path = (ROOT / match[1]).resolve() if match else None
-        if not path or ROOT not in path.parents or not path.is_file():
-            errors += 1
-            print(f"{row['id']}: photo source indisponible; reprise automatique nécessaire", flush=True)
-            continue
-        photo = features(path.read_bytes())
+        if path and ROOT in path.parents and path.is_file():
+            photo = features(path.read_bytes())
+        else:
+            attachments = f.get('Photos personnelles') or []
+            if not attachments:
+                errors += 1
+                print(f"{row['id']}: photo source indisponible; reprise automatique nécessaire", flush=True)
+                continue
+            with urllib.request.urlopen(attachments[0]['url'],timeout=30) as response:
+                photo_data=response.read(20_000_001)
+            if len(photo_data)>20_000_000:
+                raise ValueError('Photo trop volumineuse')
+            photo=features(photo_data)
         chosen = []
         album_counts = {}
         urls = set()
@@ -322,7 +330,9 @@ def run():
                 primary_text = re.sub(r'\b([A-Z])(?=[A-Z][a-z])', r'\1 ', primary_text)
                 primary_tokens = [w for w in words(primary_text.replace('@','O')) if len(w)>=3 and w not in {'THE','AND','WITH','STEREO','MONO'}]
                 heading_query = ' '.join(dict.fromkeys(primary_tokens))
-            queries = list(dict.fromkeys(([heading_query] if heading_query else []) + queries[:4] + individual[:8]))[:10]
+            stored_title = str(f.get('Titre') or '').replace('—',' - ')
+            title_queries = [stored_title] + [part.strip() for part in stored_title.split(' - ') if len(part.strip())>=4] if stored_title else []
+            queries = list(dict.fromkeys(([heading_query] if heading_query else []) + queries[:4] + title_queries + individual[:8]))[:10]
             print('Requêtes de titres: ' + json.dumps(queries,ensure_ascii=False),flush=True)
             dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
             masters = {}
