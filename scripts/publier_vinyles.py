@@ -67,15 +67,12 @@ def main():
             pending += 1
             continue
         verified = bool(cover and release and str(release).isdigit())
-        if not verified and bac != "B-08":
-            pending += 1
-            continue
         item = {
             "b": bac, "o": int(pos), "t": r["Titre"], "a": r["Artiste"],
             "y": str(r["Année"]) if r.get("Année") else "",
             "f": "À classer", "r": "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x),
-            "d": str(release) if verified else "", "th": cover if verified else None, "rc": as_url(r.get("Back Cover")) if verified else None,
+            "d": str(release) if verified else "", "th": cover, "rc": as_url(r.get("Back Cover")),
             "vs": None, "n": None, "v": None, "m": None, "x": None,
             "h": None, "w": None, "no": None, "ev": None,
             "fa": [], "fp": "", "pa": r.get("Pays du pressage") or "",
@@ -86,8 +83,8 @@ def main():
             # provisoires peuvent recevoir une pochette ultérieurement vérifiée.
             pos = by_key[key]
             old = existing[pos]
-            if bac == "B-08" and not old.get("d") and verified:
-                existing[pos] = {**old, **item}
+            if not old.get("th") and cover:
+                existing[pos] = {**old, "th": cover, "rc": as_url(r.get("Back Cover")) or old.get("rc"), "d": str(release) if verified else old.get("d", "")}
                 updated += 1
             continue
         added.append(item)
@@ -97,10 +94,10 @@ def main():
         return 0
     output = existing + sorted(added, key=lambda r: (r["b"], r["o"]))
     assert len(output) == initial_count + len(added), "Perte ou ajout inattendu"
-    assert all(output[i] == old for i, old in enumerate(history) if old.get("b") != "B-08"), "Fiches historiques modifiées"
+    assert all(output[i] == old for i, old in enumerate(history) if old.get("th")), "Pochettes historiques modifiées"
     rebuilt = original[:start] + json.dumps(output, ensure_ascii=False, separators=(",", ":")) + original[end:]
     if os.getenv("DRY_RUN", "1") == "1":
-        print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour B-08, {pending} en attente")
+        print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour de pochettes, {pending} en attente")
         return 0
     SITE.write_text(rebuilt, encoding="utf-8")
     print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08. Les autres bacs conservés.")
