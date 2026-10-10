@@ -150,7 +150,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v13:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v14:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -424,6 +424,10 @@ def run():
                         scores.append((score, c))
             print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
         scores = [(score,candidate) for score,candidate in scores if printed_number_matches(f,candidate)]
+        if scores:
+            heading=main_heading(f,[candidate for score,candidate in scores])
+            if heading:
+                scores=[(score,candidate) for score,candidate in scores if album_key(candidate)==album_key(heading)]
         if not scores:
             heading = main_heading(f, candidates + master_candidates)
             if heading:
