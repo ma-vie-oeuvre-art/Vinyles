@@ -49,6 +49,7 @@ def main():
         raise ValueError("Catalogue historique inattendu : publication interrompue")
     end = start + consumed
     by_key = {(r.get("b"), r.get("o")) for r in existing}
+    initial_count = len(existing)
     if len(by_key) != len(existing):
         raise ValueError("Doublons dans le catalogue historique : publication interrompue")
     rows = fetch_rows(token)
@@ -64,6 +65,9 @@ def main():
         release = r.get("Discogs release_id")
         # Ne publie pas les fiches provisoires, sans identification ET sans pochette.
         if not (cover and release and r.get("Titre") and r.get("Artiste")):
+            pending += 1
+            continue
+        if not str(release).isdigit():
             pending += 1
             continue
         item = {
@@ -83,6 +87,8 @@ def main():
         print(f"Aucune nouvelle fiche prête. {pending} fiche(s) en attente. Site inchangé.")
         return 0
     output = existing + sorted(added, key=lambda r: (r["b"], r["o"]))
+    assert len(output) == initial_count + len(added), "Perte ou ajout inattendu"
+    assert output[:initial_count] == existing, "Fiches historiques modifiées"
     rebuilt = original[:start] + json.dumps(output, ensure_ascii=False, separators=(",", ":")) + original[end:]
     if os.getenv("DRY_RUN", "1") == "1":
         print(f"SIMULATION : {len(added)} ajouts, {len(existing)} fiches historiques conservées, {pending} en attente")
