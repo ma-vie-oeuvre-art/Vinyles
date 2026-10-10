@@ -142,6 +142,8 @@ def main():
         if not cursor or updated >= BATCH:
             break
     print(f"Bilan: {scanned} examinés, {updated} images importées, {ambiguous} pressages sans identification confirmée")
+    if scanned and not updated:
+        raise SystemExit("ÉCHEC MÉTIER : aucune nouvelle pochette importée ; vérifier les candidats et les erreurs ci-dessus.")
 
 
 if __name__ == "__main__":
