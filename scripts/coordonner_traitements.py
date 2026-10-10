@@ -16,9 +16,11 @@ def request(path, method='GET'):
 def main():
     current = int(os.environ['GITHUB_RUN_ID'])
     head = os.environ['GITHUB_SHA']
-    runs = request('actions/runs?status=in_progress&per_page=100')['workflow_runs']
+    # Include queued runs: one can start between listing and cancellation of its predecessor.
+    runs = request('actions/runs?per_page=100')['workflow_runs']
     for run in runs:
-        if (run['id'] == current or run.get('path') != WORKFLOW
+        if (run.get('status') not in {'in_progress', 'queued', 'pending', 'waiting', 'requested'}
+                or run['id'] == current or run.get('path') != WORKFLOW
                 or run.get('head_branch') != 'main' or run['head_sha'] == head
                 or int(run['id']) > current):
             continue
