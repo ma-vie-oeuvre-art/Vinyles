@@ -29,7 +29,7 @@ def supported(ocr, credit, title):
     return bool(artist_words) and sum(w in visible for w in artist_words) / len(artist_words) >= 0.65
 
 def recognition_stamp(ocr):
-    return '[recognition-v3:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
+    return '[recognition-v4:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
 
 def should_search(ocr, diagnostic, today):
     if recognition_stamp(ocr) not in diagnostic:
@@ -147,6 +147,7 @@ def main():
         queries = list(dict.fromkeys(neural_queries + lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
         albums = {}
         candidates = {}
+        visual_candidates = {}
         def search(params):
             nonlocal last_call
             url = 'https://api.discogs.com/database/search?' + urllib.parse.urlencode(params)
@@ -154,6 +155,9 @@ def main():
                 time.sleep(max(0, 2.2 - (time.monotonic() - last_call)))
                 last_call = time.monotonic()
                 cache[url] = request_json(url, dg)
+            for item in cache[url].get('results', []):
+                if item.get('type') == 'release' and item.get('cover_image') and ' - ' in item.get('title', ''):
+                    visual_candidates[item['id']] = {'release_id': item['id'], 'master_id': item.get('master_id'), 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year'), 'cover_url': item['cover_image']}
             return cache[url]
         hints = catalogues(ocr)
         initial_text = ocr.split('[OCR neural v1:')[0]
@@ -201,6 +205,15 @@ def main():
                 updates.update({'Artiste': None, 'Titre': None, 'Candidats Discogs': '[]'})
                 updates.update(reset_reference(f))
                 updates['Diagnostic'] = 'Ancienne attribution automatique retirée: le titre correspondait à un texte secondaire, sans confirmation dans les textes principaux. Recherche automatique poursuivie.'
+            visible = set(words(ocr))
+            def visual_priority(item):
+                tokens = set(w for w in words(item['titre']) if len(w) >= 4)
+                return sum(w in visible or any(len(v) >= 6 and w.startswith(v) for v in visible) for w in tokens)
+            pool = sorted(visual_candidates.values(), key=visual_priority, reverse=True)[:120]
+            while len(json.dumps(pool, ensure_ascii=False)) > 85000:
+                pool.pop()
+            if pool:
+                updates['Candidats Discogs'] = json.dumps(pool, ensure_ascii=False)
             updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + (today + timedelta(days=1)).isoformat()
         request_json(endpoint + '/' + row['id'], at, {'fields': updates})
         print(f'{row["id"]}: reconnaissance terminée en {time.monotonic()-started:.1f}s', flush=True)

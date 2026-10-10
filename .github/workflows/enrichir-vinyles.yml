@@ -111,6 +111,19 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
         run: python scripts/reconnaitre_albums.py
+      - name: Préparer la comparaison des pochettes encore incertaines
+        id: visuel
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+        run: python scripts/comparer_pochettes.py --select
+      - name: Installer la comparaison géométrique uniquement si nécessaire
+        if: steps.visuel.outputs.count != '0'
+        run: python -m pip install --disable-pip-version-check opencv-python-headless==5.0.0.93
+      - name: Identifier automatiquement les albums par les images des pochettes
+        if: steps.visuel.outputs.count != '0'
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+        run: python scripts/comparer_pochettes.py
       - name: Rechercher des candidats Discogs pour les fiches Dicté
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
