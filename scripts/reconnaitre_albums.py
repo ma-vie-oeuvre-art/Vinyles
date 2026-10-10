@@ -93,7 +93,7 @@ def main():
     cursor = None
     rows = []
     while True:
-        args = {'pageSize': 100, 'filterByFormula': "OR(AND(OR({Statut}='Dicté',AND({Statut}='À revoir',OR(FIND('[OCR zones v3]',{Transcription source})>0,FIND('[OCR neural texte]',{Transcription source})>0))),OR(NOT({Titre}),NOT({Artiste}))),AND(FIND('[Vérification du titre automatique]',{Transcription source})>0,NOT(FIND('[Titre vérifié automatiquement]',{Diagnostic}))))"}
+        args = {'pageSize': 100, 'filterByFormula': "OR(AND(OR({Statut}='Dicté',AND({Statut}='À revoir',OR(FIND('[OCR zones v3]',{Transcription source})>0,FIND('[OCR neural texte]',{Transcription source})>0))),OR(NOT({Titre}),NOT({Artiste}))),AND(FIND('[Vérification du titre automatique]',{Transcription source})>0,NOT(FIND('[Titre vérifié automatiquement]',{Transcription source}))))"}
         if cursor:
             args['offset'] = cursor
         page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
@@ -133,7 +133,7 @@ def main():
             artist, title = next(iter(primary.values()))
             retained = [item for item in prior if supported(prominent, *str(item.get('titre', '')).rpartition(' - ')[::2])]
             reset = reset_reference(f) if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))) else {}
-            request_json(endpoint + '/' + row['id'], at, {'fields': {**reset, 'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
+            request_json(endpoint + '/' + row['id'], at, {'fields': {**reset, 'Transcription source': source if '[Titre vérifié automatiquement]' in source else source + '\n[Titre vérifié automatiquement]', 'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
             print(f'{row["id"]}: album reconnu depuis les preuves conservées, sans nouvelle recherche', flush=True)
             continue
         if not should_search(ocr, f.get('Diagnostic', ''), today):
@@ -191,7 +191,7 @@ def main():
             artist, title = next(iter(albums.values()))
             if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))):
                 updates.update(reset_reference(f))
-            updates.update({'Artiste': artist, 'Titre': title, 'Diagnostic': ('Album reconnu par catalogue concordant dans les deux lectures automatiques; aucune édition physique attribuée.' if catalogue_verified else 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin.') + ' [Titre vérifié automatiquement]'})
+            updates.update({'Transcription source': source if '[Titre vérifié automatiquement]' in source else source + '\n[Titre vérifié automatiquement]', 'Artiste': artist, 'Titre': title, 'Diagnostic': ('Album reconnu par catalogue concordant dans les deux lectures automatiques; aucune édition physique attribuée.' if catalogue_verified else 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin.') + ' [Titre vérifié automatiquement]'})
             print(f'{row["id"]}: album reconnu')
         else:
             updates.update({'Statut': 'À revoir', 'Diagnostic': f'Lecture et recherche automatiques effectuées : {len(albums)} album(s) concordant(s). Photo conservée; identification encore incertaine.'})
