@@ -59,7 +59,7 @@ def main():
         for row in page.get("records", []):
             fields = row.get("fields", {})
             # Do not reprocess a row where candidates already exist.
-            if (not fields.get(FIELDS["candidats"]) and not fields.get(FIELDS["ne_pas_retraiter"]) and (fields.get(FIELDS["numero"]) or (fields.get(FIELDS["artiste"]) and fields.get(FIELDS["titre"])))):
+            if (not fields.get(FIELDS["candidats"]) and not fields.get(FIELDS["ne_pas_retraiter"]) and (fields.get(FIELDS["numero"]) or (fields.get(FIELDS["artiste"]) and fields.get(FIELDS["titre"])) or "[OCR pochette]" in fields.get("Transcription source", ""))):
                 selected.append(row)
                 if len(selected) >= LIMIT:
                     break
@@ -74,7 +74,8 @@ def main():
         artist = str(f.get(FIELDS["artiste"], "")).strip()
         title = str(f.get(FIELDS["titre"], "")).strip()
         key = str(f.get(FIELDS["cle"], "")).strip()
-        if not (catno or (artist and title) or key):
+        ocr = f.get("Transcription source", "").split("[OCR pochette]")[-1].strip() if "[OCR pochette]" in f.get("Transcription source", "") else ""
+        if not (catno or (artist and title) or key or ocr):
             print(f"{row['id']}: données insuffisantes; inchangé")
             continue
         params = {"type": "release", "per_page": 8}
@@ -89,7 +90,7 @@ def main():
             if catno and catno.isdigit():
                 print(f"{row['id']}: numero numerique sans artiste/titre; validation requise")
                 continue
-            params["q"] = key
+            params["q"] = key or ocr.split(" | ")[0][:100]
         url = "https://api.discogs.com/database/search?" + urllib.parse.urlencode(params)
         try:
             response = request_json(url, discogs_headers)
