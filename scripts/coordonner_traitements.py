@@ -2,6 +2,7 @@
 import json
 import os
 import urllib.request
+import urllib.error
 
 WORKFLOW = '.github/workflows/enrichir-vinyles.yml'
 
@@ -28,7 +29,13 @@ def main():
         # Photo-only pushes keep the active work. Code corrections take effect now.
         if any(f['filename'].startswith('scripts/') or f['filename'] == WORKFLOW
                for f in changes.get('files', [])):
-            request(f'actions/runs/{run["id"]}/cancel', 'POST')
+            try:
+                request(f'actions/runs/{run["id"]}/cancel', 'POST')
+            except urllib.error.HTTPError as exc:
+                # The run may have completed during comparison; no cancellation needed.
+                if exc.code == 409 and request(f'actions/runs/{run["id"]}').get('status') == 'completed':
+                    continue
+                raise
             print(f'Ancienne version remplacée : exécution {run["id"]}. Les fiches déjà enregistrées sont conservées.', flush=True)
 
 if __name__ == '__main__':
