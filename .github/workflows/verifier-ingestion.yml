@@ -1,0 +1,31 @@
+name: Vérification sécurité ingestion vinyles
+on:
+  push:
+    paths:
+      - 'worker/**'
+      - 'scripts/**'
+      - '.github/workflows/verifier-ingestion.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Vérifier syntaxe et compilation
+        run: |
+          node --check worker/ingestion.mjs
+          python -m py_compile scripts/enrichir_vinyles.py scripts/verifier_configuration.py
+      - name: Interdire les clés côté site public
+        run: |
+          if grep -Ein 'AIRTABLE_TOKEN|DISCOGS_TOKEN|UPLOAD_KEY|Bearer[[:space:]]+[A-Za-z0-9]{16,}' index.html capture.html; then
+            echo "Risque: mention de secret dans une page publique"; exit 1
+          fi
