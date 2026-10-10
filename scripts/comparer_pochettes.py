@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from enrichir_vinyles import request_json, API, BASE, TABLE
-from reconnaitre_albums import words, album_title, neural_evidence
+from reconnaitre_albums import words, album_title, neural_evidence, supported
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
@@ -29,7 +29,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v2:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v3:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -81,7 +81,7 @@ def features(data):
     points, descriptors = cv2.SIFT_create(nfeatures=2500).detectAndCompute(pixels, None)
     return pixels.shape, points, descriptors
 
-def compare(photo, reference):
+def compare(photo, reference, text_confirmed=False):
     import cv2
     import numpy as np
     if photo[2] is None or reference[2] is None:
@@ -96,11 +96,11 @@ def compare(photo, reference):
     if matrix is None or mask is None:
         return 0
     inliers = int(mask.sum())
-    if inliers < 14 or inliers / len(good) < .55:
+    if inliers < (24 if text_confirmed else 14) or inliers / len(good) < (.70 if text_confirmed else .55):
         return 0
     selected = src[mask.ravel().astype(bool)]
     coverage = cv2.contourArea(cv2.convexHull(selected)) / (reference[0][0] * reference[0][1])
-    if coverage < .20:
+    if coverage < (.08 if text_confirmed else .20):
         return 0
     h, w = reference[0]
     corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]]).reshape(-1, 1, 2)
@@ -174,7 +174,8 @@ def run():
                 if failure:
                     unavailable += 1
                     continue
-                score = compare(photo, reference)
+                credit, _, title = c['titre'].rpartition(' - ')
+                score = compare(photo, reference, supported(f.get('Transcription source', ''), credit, title))
                 if score:
                     scores.append((score, c))
         if not scores:
@@ -185,6 +186,7 @@ def run():
             text = source.partition('[OCR neural texte]')[2].split('[OCR neural regions]')[0]
             variants = text.replace('@', 'O')
             variants = re.sub(r'\bZ[Oo0]{2}1', '2001', variants, flags=re.I)
+            variants = re.sub(r'(?<=\d)(?=[A-Za-z])|(?<=[A-Za-z])(?=\d)', ' ', variants)
             individual = [w for w in words(variants) if len(w) >= 4 and w not in {'STEREO','MONO','RECORDS','VOLUME','POLYDOR','CORAL','DECCA'}]
             queries = list(dict.fromkeys(queries[:4] + individual[:8]))[:10]
             dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
@@ -205,7 +207,8 @@ def run():
                     if failure:
                         unavailable += 1
                         continue
-                    score = compare(photo, reference)
+                    credit, _, title = c['titre'].rpartition(' - ')
+                    score = compare(photo, reference, supported(f.get('Transcription source', ''), credit, title))
                     if score:
                         scores.append((score, c))
             print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
