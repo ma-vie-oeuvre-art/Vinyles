@@ -28,7 +28,7 @@ export default {async fetch(req,env) {
  const formula=`AND({Bac}='${bac}',{Ordre dans le bac}=${ordre})`;
  try{
    const lookup=await call(api+"?"+new URLSearchParams({filterByFormula:formula,pageSize:"2"}),env.AIRTABLE_TOKEN);
-   if(lookup.records?.length)return response({status:"existe",record_id:lookup.records[0].id},409);
+   if(lookup.records?.length){const existing=lookup.records[0];const images=existing.fields?.["Front Cover"];if(images?.length)return response({status:"existe",record_id:existing.id},409);return response({error:"Fiche déjà présente mais image absente : correction manuelle nécessaire",record_id:existing.id},409);}
    const id=`${bac}-${String(ordre).padStart(3,"0")}`;
    const created=await call(api,env.AIRTABLE_TOKEN,"POST",{fields:{"Bac":bac,"Ordre dans le bac":ordre,"Total du bac":total,"Statut":"Dicté","Transcription source":"Capture photo brute "+id+" — identification en attente"}});
    const upload=await call(`https://content.airtable.com/v0/${BASE}/${created.id}/Front%20Cover/uploadAttachment`,env.AIRTABLE_TOKEN,"POST",{contentType:mime,filename:id+"."+({"image/jpeg":"jpg","image/png":"png","image/webp":"webp"})[mime],file:image});
