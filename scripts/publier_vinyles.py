@@ -48,26 +48,26 @@ def main():
     if not isinstance(existing, list) or len(existing) < 200:
         raise ValueError("Catalogue historique inattendu : publication interrompue")
     end = start + consumed
-    by_key = {(r.get("b"), r.get("o")) for r in existing}
+    by_key = {(r.get("b"), r.get("o")): i for i, r in enumerate(existing)}
     initial_count = len(existing)
     if len(by_key) != len(existing):
         raise ValueError("Doublons dans le catalogue historique : publication interrompue")
+    history = [dict(r) for r in existing]
     rows = fetch_rows(token)
-    added, pending = [], 0
+    added, pending, updated = [], 0, 0
     for r in rows:
         bac, pos = r.get("Bac"), r.get("Ordre dans le bac")
         if not bac or not isinstance(pos, (int, float)) or int(pos) != pos:
             continue
         key = (bac, int(pos))
-        if key in by_key:
-            continue
         cover = as_url(r.get("Front Cover"))
         release = r.get("Discogs release_id")
         # Ne publie pas les fiches provisoires, sans identification ET sans pochette.
-        if not (cover and release and r.get("Titre") and r.get("Artiste")):
+        if not (r.get("Titre") and r.get("Artiste")):
             pending += 1
             continue
-        if not str(release).isdigit():
+        verified = bool(cover and release and str(release).isdigit())
+        if not verified and bac != "B-08":
             pending += 1
             continue
         item = {
@@ -75,26 +75,35 @@ def main():
             "y": str(r["Année"]) if r.get("Année") else "",
             "f": "À classer", "r": "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x),
-            "d": str(release), "th": cover, "rc": as_url(r.get("Back Cover")),
+            "d": str(release) if verified else "", "th": cover if verified else None, "rc": as_url(r.get("Back Cover")) if verified else None,
             "vs": None, "n": None, "v": None, "m": None, "x": None,
             "h": None, "w": None, "no": None, "ev": None,
             "fa": [], "fp": "", "pa": r.get("Pays du pressage") or "",
             "dc": "",
         }
+        if key in by_key:
+            # Ne jamais modifier les 252 fiches historiques. Seuls les B-08
+            # provisoires peuvent recevoir une pochette ultérieurement vérifiée.
+            pos = by_key[key]
+            old = existing[pos]
+            if bac == "B-08" and not old.get("d") and verified:
+                existing[pos] = {**old, **item}
+                updated += 1
+            continue
         added.append(item)
-        by_key.add(key)
-    if not added:
+        by_key[key] = len(existing) + len(added) - 1
+    if not added and not updated:
         print(f"Aucune nouvelle fiche prête. {pending} fiche(s) en attente. Site inchangé.")
         return 0
     output = existing + sorted(added, key=lambda r: (r["b"], r["o"]))
     assert len(output) == initial_count + len(added), "Perte ou ajout inattendu"
-    assert output[:initial_count] == existing, "Fiches historiques modifiées"
+    assert all(output[i] == old for i, old in enumerate(history) if old.get("b") != "B-08"), "Fiches historiques modifiées"
     rebuilt = original[:start] + json.dumps(output, ensure_ascii=False, separators=(",", ":")) + original[end:]
     if os.getenv("DRY_RUN", "1") == "1":
-        print(f"SIMULATION : {len(added)} ajouts, {len(existing)} fiches historiques conservées, {pending} en attente")
+        print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour B-08, {pending} en attente")
         return 0
     SITE.write_text(rebuilt, encoding="utf-8")
-    print(f"Publication : {len(added)} ajouts. {len(existing)} fiches historiques conservées.")
+    print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08. Les autres bacs conservés.")
     return 0
 
 if __name__ == "__main__":
