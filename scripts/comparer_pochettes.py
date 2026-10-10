@@ -115,7 +115,7 @@ def should_compare(fields):
     return not retry or retry[1] <= today
 
 def canonical_candidate(fields):
-    if not any(marker in fields.get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]']):
+    if not any(marker in fields.get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]','[Titre vérifié automatiquement]']):
         return None
     existing = str(fields.get('Discogs référence release_id',''))
     if existing.isdigit():
@@ -164,7 +164,7 @@ def select():
         offset = page.get('offset')
         if not offset:
             break
-    rows.sort(key=lambda row: (row['fields'].get('Bac', ''), row['fields'].get('Ordre dans le bac', 0)))
+    rows.sort(key=lambda row: (bool(row['fields'].get('Artiste') and row['fields'].get('Titre')), not any(marker in row['fields'].get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]']), row['fields'].get('Bac', ''), row['fields'].get('Ordre dans le bac', 0)))
     rows = rows[:20]
     SELECTION.write_text(json.dumps(rows), encoding='utf-8')
     if os.environ.get('GITHUB_OUTPUT'):
