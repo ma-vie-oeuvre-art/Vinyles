@@ -92,30 +92,34 @@ def main():
             pending += 1
             continue
         verified = bool(release and str(release).isdigit() and r.get("Statut") == "Identifié")
+        documented = verified or bool(r.get("Discogs référence release_id"))
         item = {
             "b": bac, "o": int(pos), "t": r["Titre"], "a": r["Artiste"],
             "y": str((r.get("Année") or "") if verified else r.get("Année de l'album") or ""),
             "f": r.get("Famille") or "À classer", "r": r.get("Réputation sonore") or "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x),
             "d": str(release) if verified else "", "th": cover, "rc": cover,
-            "vs": back, "n": r.get("Note Discogs (sur 5)") if verified else None, "v": r.get("Valeur minimale") if verified else None, "m": r.get("Prix suggéré VG+ (Discogs)") if verified else None, "x": r.get("Prix suggéré Mint (Discogs)") if verified else None,
-            "h": r.get("Possédé par (Discogs)") if verified else None, "w": r.get("Recherché par (Discogs)") if verified else None, "no": r.get("Nombre de notes (Discogs)") if verified else None, "ev": r.get("Exemplaires en vente (Discogs)") if verified else None,
-            "fa": r.get("Familles") or [], "fp": r.get("Format physique") if verified else "", "pa": (r.get("Pays du pressage") or "") if verified else "",
+            "vs": back, "n": r.get("Note Discogs (sur 5)") if documented else None, "v": r.get("Valeur minimale") if documented else None, "m": r.get("Prix suggéré VG+ (Discogs)") if documented else None, "x": r.get("Prix suggéré Mint (Discogs)") if documented else None,
+            "h": r.get("Possédé par (Discogs)") if documented else None, "w": r.get("Recherché par (Discogs)") if documented else None, "no": r.get("Nombre de notes (Discogs)") if documented else None, "ev": r.get("Exemplaires en vente (Discogs)") if documented else None,
+            "fa": r.get("Familles") or [], "fp": r.get("Format physique") or "", "pa": (r.get("Pays du pressage") or "") if verified else "",
             "dc": (r.get("Décennie du pressage") or "") if verified else "",
             "album": r.get("Discogs référence album") or "", "np": r.get("Nombre de plages"),
+            "indicatif": bool(documented and not verified), "sourcePrix": r.get("Source de l'estimation") or "",
+            "technique": r.get("Qualité d'enregistrement (source)") or "", "historique": r.get("Informations historiques") or "",
         }
         if key in by_key:
-            # Ne jamais modifier les 252 fiches historiques. Seuls les B-08
-            # provisoires peuvent recevoir une pochette ultérieurement vérifiée.
+            # Actualiser les fiches enrichies par GitHub sans retirer les entrées historiques.
             pos = by_key[key]
             old = existing[pos]
-            if bac == 'B-08':
-                metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np')}
+            if bac == 'B-08' or r.get('Enrichissement automatique', '').startswith('metadata-v2'):
+                metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']
                 metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Enrichissement automatique') or r.get('Diagnostic', ''), 'photo': personal})
                 if cover:
                     metadata.update({'th': cover, 'rc': cover})
+                if bac != 'B-08':
+                    metadata = {k: v for k, v in metadata.items() if v is not None and v != '' and v != []}
                 fresh = {**old, **metadata}
                 if fresh != old:
                     existing[pos] = fresh
@@ -133,7 +137,7 @@ def main():
         return 0
     output = [r for r in existing if r.get("b") != "B-08" or (r.get("b"), r.get("o")) in seen] + sorted(added, key=lambda r: (r["b"], r["o"]))
     assert len(output) == initial_count + len(added) - len(removed), "Perte ou ajout inattendu"
-    assert [r for r in output if r.get('b') != 'B-08'] == [r for r in history if r.get('b') != 'B-08'] + [r for r in sorted(added, key=lambda r: (r['b'], r['o'])) if r.get('b') != 'B-08'], "Fiches historiques modifiées"
+    assert {(r['b'],r['o']) for r in output if r.get('b') != 'B-08'} >= {(r['b'],r['o']) for r in history if r.get('b') != 'B-08'}, 'Fiches historiques perdues'
     rebuilt = original[:start] + json.dumps(output, ensure_ascii=False, separators=(",", ":")) + original[end:]
     if os.getenv("DRY_RUN", "1") == "1":
         print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour, {len(removed)} suppressions B-08, {pending} en attente")
@@ -144,5 +148,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 

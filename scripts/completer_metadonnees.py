@@ -216,6 +216,10 @@ def resolve(f, headers, cache):
 def metadata(f, release, headers, cache):
     rid = str(release['id']); confirmed = f.get('Statut') == 'Identifié' and str(f.get('Discogs release_id','')).strip() == rid
     out = {RID:rid, REF:'https://www.discogs.com/release/' + rid}
+    if not f.get('Titre') and release.get('title'): out['Titre']=release['title']
+    if not f.get('Artiste'):
+        artist=release.get('artists_sort') or ', '.join(a.get('name','') for a in release.get('artists',[]))
+        if artist: out['Artiste']=artist
     if not f.get('Tracklist JSON') and release.get('tracklist'):
         tracks = flatten_tracks(release['tracklist'])
         out['Tracklist JSON'] = json.dumps(tracks,ensure_ascii=False,separators=(',',':'))

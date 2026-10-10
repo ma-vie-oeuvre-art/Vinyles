@@ -652,7 +652,7 @@ function rendre(){
       '<p class="k">'+esc(r.k)+'</p>'+
       (r.s?'<p class="k">'+esc(r.s)+'</p>':'')+
       (r.h!=null&&r.w!=null&&r.h<r.w?'<p class="rare">recherché</p>':'')+
-      (r.m?'<p class="v">'+arg(r.m)+' <span class="g">VG+</span>'+
+      (r.m?'<p class="v">'+arg(r.m)+' <span class="g">VG+'+(r.indicatif?' · indicatif':'')+'</span>'+
             (r.x?' <span class="g">· '+arg(r.x)+' Mint</span>':'')+'</p>'
           :'<p class="v vide">pas d\'estimation</p>')+
       '</div>';
@@ -900,17 +900,23 @@ function ouvrir(i){
   const d=[['Label et n°', r.k||'—'],['Famille',r.f]];
   if(r.s) d.push(['Identification',r.s]);
   if(r.diag) d.push(['À vérifier',r.diag]);
-  if(r.y) d.push(['Année',r.y]);
+  if(r.y) d.push([r.d?'Année du pressage':'Année de l’album',r.y]);
+  if(r.np!=null) d.push(['Nombre de plages',r.np]);
+  if(r.indicatif) d.push(['Données Discogs','Version de référence; pressage possédé non confirmé.']);
+  if(r.sourcePrix) d.push(['Source des prix',r.sourcePrix]);
+  if(r.technique) d.push(['Enregistrement',r.technique]);
+  if(r.historique) d.push(['Documentation',r.historique]);
   if(r.r) d.push(['Réputation',r.r]);
   document.getElementById('fd').innerHTML=d.map(([k,v])=>'<dt>'+k+'</dt><dd>'+esc(''+v)+'</dd>').join('');
   const lien=document.getElementById('fl');
-  lien.style.display = r.d ? '' : 'none';
+  lien.style.display = (r.d || r.album) ? '' : 'none';
   if(r.d) lien.href='https://www.discogs.com/release/'+r.d;
+  else if(r.album) lien.href=r.album;
   document.getElementById('fcredit').textContent = r.photo
     ? 'Photo originale de cet exemplaire. Identification du pressage en cours.'
     : r.d
     ? 'Pochette et données de pressage fournies par Discogs.'
-    : 'Ce pressage n\'est pas identifié sur Discogs.';
+    : r.album ? 'Illustration et données de référence Discogs. Pressage possédé à confirmer plus tard.' : 'Photo conservée; recherche automatique sans correspondance certaine.';
   voile.classList.add('on');
   document.getElementById('fermer').focus();
 }
