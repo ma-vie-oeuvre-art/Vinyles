@@ -120,6 +120,41 @@ def normalize_title(title):
     title = re.sub(r'^\s*(?:le|la|les|l|un|une|des|du|the|a|an)\s+', '', title)
     return '-'.join(title.split())
 
+def validated_reference(f):
+    if f.get("Preuve d'identification") != 'Validation humaine': return None
+    references=set(re.findall(r'(?:release\s+|discogs\.com/release/)(\d+)',f.get('Informations historiques',''),re.I))
+    return next(iter(references)) if len(references)==1 else None
+
+def restore_documented_fields(f):
+    """Réparer les champs effacés contredisant une transcription déjà validée."""
+    out={}
+    if f.get("Preuve d'identification") != 'Validation humaine': return out
+    history=f.get('Informations historiques','')
+    status=re.search(r'^Statut réel\s*:\s*(Identifié|Pressage à confirmer|À revoir|Non trouvé|Dicté)\.',history,re.M)
+    if status: out['Statut']=status[1]
+    if re.search(r'^Cause réelle\s*:\s*aucun résultat Discogs',history,re.M|re.I): out['Cause']='Aucun résultat Discogs'
+    if 'numéro de fascicule, pas un numéro de catalogue' in history:
+        out.update({'N° catalogue':None,'Cause':'Numéro de fascicule, pas de catalogue'})
+    if 'réputation sonore laissée vide' in f.get('Source de la réputation','').lower(): out['Réputation sonore']=None
+    source=f.get('Transcription source','')
+    cover=re.search(r'\[photo pochette\]\s*(.*?)(?=\[photo|$)',source,re.S|re.I)
+    if cover and (not f.get('Titre') or not f.get('Artiste')):
+        parts=[p.strip().rstrip('.') for p in cover[1].split(' — ')]
+        matches=[i for i,p in enumerate(parts) if re.search(r'\b(?:symphonie|symphony|concerto|sonata|sonate|quatuor|requiem)\b',p,re.I)]
+        if len(matches)==1 and 0<matches[0]<len(parts)-1:
+            i=matches[0]
+            if not f.get('Titre'): out['Titre']=parts[i]
+            if not f.get('Artiste'): out['Artiste']=' / '.join([parts[i-1],parts[i+1]])
+            out['Statut']='Pressage à confirmer'
+    central=re.search(r'\[photo étiquette centrale\]\s*(.*)',source,re.S|re.I)
+    if central and not f.get("Qualité d'enregistrement (source)"):
+        out["Qualité d'enregistrement (source)"]='Source : transcription validée de l’étiquette de cet exemplaire.\n'+central[1]
+    if central:
+        country=re.search(r'\bMade in (Italy|Canada|France|Germany|England|USA|US)\b',central[1],re.I)
+        names={'italy':'Italy','canada':'Canada','france':'France','germany':'Germany','england':'UK','usa':'US','us':'US'}
+        if country and not f.get('Pays du pressage'): out['Pays du pressage']=names[country[1].lower()]
+    return out
+
 def flatten_tracks(items, work=''):
     result = []
     for t in items:
@@ -169,7 +204,7 @@ def physical_format(release):
     return None
 
 def derived(row, totals):
-    f = row['fields']; out = {}
+    f = row['fields']; out = restore_documented_fields(f)
     bac, rank = f.get('Bac'), f.get('Ordre dans le bac')
     if bac and isinstance(rank, (int,float)) and rank > 0 and int(rank) == rank:
         out.update({'Position': f'{int(rank)} / {totals[bac]}', 'Total du bac': totals[bac]})
@@ -197,7 +232,7 @@ def derived(row, totals):
     return out
 
 def resolve(f, headers, cache):
-    rid = str(f.get(RID) or '').strip()
+    rid = str(f.get(RID) or validated_reference(f) or '').strip()
     physical = str(f.get('Discogs release_id') or '').strip()
     if not rid.isdecimal() and physical.isdecimal(): rid = physical
     if not rid.isdecimal():
@@ -271,12 +306,13 @@ def main():
         if f.get('Ne pas retraiter'):continue
         updates=derived(row,totals)
         try:
-            signature = VERSION + ':' + hashlib.sha256(json.dumps([f.get('Artiste'),f.get('Titre'),f.get('N° catalogue'),f.get('Discogs release_id'),f.get('Statut'),f.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
-            needed = not f.get(REPORT,'').startswith(signature) and (f.get('Discogs release_id') or (f.get('Titre') and f.get('Artiste')))
+            effective={**f,**updates}
+            signature = VERSION + ':' + hashlib.sha256(json.dumps([effective.get('Artiste'),effective.get('Titre'),effective.get('N° catalogue'),effective.get('Discogs release_id'),effective.get('Statut'),effective.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
+            needed = not f.get(REPORT,'').startswith(signature) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
             if needed and fetched < 300:
-                release=resolve(f,dg,cache); fetched+=1
+                release=resolve(effective,dg,cache); fetched+=1
                 if release:
-                    updates.update(metadata(f,release,dg,cache))
+                    updates.update(metadata(effective,release,dg,cache))
                     updates[REPORT] = updates[REPORT].replace(VERSION,signature,1)
                 else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.'
             merged={**f,**updates}; updates.update(derived({**row,'fields':merged},totals))
