@@ -150,7 +150,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v12:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v13:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -385,6 +385,14 @@ def run():
                 for item in result.get('results', []):
                     if item.get('cover_image') and ' - ' in item.get('title', ''):
                         masters[item['id']] = {'master_id': item['id'], 'master_candidate': True, 'titre': item['title'], 'cover_url': item['cover_image']}
+            # Regional and independent albums may have no master entry.
+            release_hints=list(dict.fromkeys(([heading_query] if heading_query else []) + title_queries[:2]))[:3]
+            for hint in release_hints:
+                result=request_json('https://api.discogs.com/database/search?'+urllib.parse.urlencode({'q':hint[:100],'type':'release','per_page':100}),dg)
+                time.sleep(1.2)
+                for item in result.get('results',[]):
+                    if item.get('cover_image') and ' - ' in item.get('title',''):
+                        masters['release:'+str(item['id'])]={'release_id':item['id'],'master_id':item.get('master_id'),'titre':item['title'],'cover_url':item['cover_image']}
             visible = set(words(source + ' ' + variants))
             def priority(item):
                 return sum(w in visible or any(len(v) >= 6 and w.startswith(v) for v in visible) for w in set(words(item['titre'])) if len(w) >= 4)
