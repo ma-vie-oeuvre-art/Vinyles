@@ -32,22 +32,38 @@ def patch(url, headers, fields):
 
 
 def unique_candidate(f):
-    """Accept only a single exact catalogue match to the stated record."""
+    """Choose only one exact catalogue AND album-title match; never guess a pressing."""
     cat = f.get("N° catalogue", "")
     title = f.get("Titre", "")
     artist = f.get("Artiste", "")
-    if not cat or not title or not artist:
+    if not cat or not title:
         return None
     norm = lambda s: re.sub(r"[^A-Z0-9]", "", str(s).upper())
     try:
         candidates = json.loads(f.get("Candidats Discogs") or "[]")
     except (ValueError, TypeError):
         return None
-    matches = [x for x in candidates
-               if norm(x.get("catno")) == norm(cat)
-               and norm(title) in norm(x.get("titre", ""))
-               and norm(artist.split(" / ")[0]) in norm(x.get("titre", ""))
-               and x.get("release_id")]
+    if not isinstance(candidates, list):
+        return None
+    matches = []
+    for x in candidates:
+        if not isinstance(x, dict) or not x.get("release_id"):
+            continue
+        if norm(x.get("catno")) != norm(cat):
+            continue
+        candidate_title = str(x.get("titre") or "")
+        # Discogs search titles normally have "Artist - Album" format.
+        album = candidate_title.split(" - ", 1)[-1]
+        if norm(album) != norm(title):
+            continue
+        # Generic compilation/various-artist credits cannot identify a pressing.
+        # Exact catalogue + album title must still be unique.
+        if artist and norm(artist) not in ("ARTISTESVARIES", "VARIOUS", "NOARTIST"):
+            credited = candidate_title.split(" - ", 1)[0]
+            short_artist = re.sub(r"\\s*\\([^)]*\\)", "", artist)
+            if not (norm(short_artist) in norm(credited) or norm(credited) in norm(short_artist)):
+                continue
+        matches.append(x)
     return matches[0] if len(matches) == 1 else None
 
 
