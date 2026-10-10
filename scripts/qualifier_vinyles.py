@@ -36,7 +36,7 @@ def main():
     at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
     dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
     endpoint = f'{API}/{BASE}/{TABLE}'
-    args = {'pageSize': 100, 'filterByFormula': "AND({Bac}='B-08',{Statut}='Dicté')"}
+    args = {'pageSize': 100, 'filterByFormula': "AND({Bac}='B-08',OR({Statut}='Dicté',{Statut}='À revoir',{Statut}='Pressage à confirmer'))"}
     page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
     errors = 0
     for row in page.get('records', []):
@@ -66,6 +66,8 @@ def main():
                 updates.update({'Statut': 'À revoir', 'Cause': 'Transcription incertaine' if candidates else 'Aucun résultat Discogs', 'Diagnostic': f'Recherche effectuée : {len(candidates)} candidat(s), aucun concordant avec les données de l’objet. Photo originale conservée; catalogue et transcription à vérifier.'})
             if not f.get('N° catalogue'):
                 updates['Cause'] = 'Numéro de catalogue absent ou incomplet'
+            if all(f.get(key) == value for key, value in updates.items()):
+                continue
             if os.getenv('DRY_RUN', '0') != '1':
                 request_json(endpoint + '/' + row['id'], at, {'fields': updates})
             print(f"{row['id']}: {updates['Statut']}; {len(matches)} concordant(s)")
