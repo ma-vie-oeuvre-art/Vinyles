@@ -56,10 +56,11 @@ def main():
     token = os.environ["AIRTABLE_TOKEN"]
     checked = 0
     recognized = 0
+    errors = 0
     for row in records(token):
         f = row.get("fields", {})
         image = f.get("Front Cover") or []
-        if not image or f.get("Discogs release_id"):
+        if not image or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
             continue
         existing = f.get("Transcription source", "")
         if "[OCR pochette]" in existing:
@@ -83,8 +84,13 @@ def main():
                 })
             print(f"{row['id']}: OCR enregistré" + (" (simulation)" if DRY_RUN else ""))
         except Exception as exc:
+            errors += 1
             print(f"{row['id']}: OCR non disponible ({type(exc).__name__}); fiche inchangée")
     print(f"OCR: {checked} photo(s) examinée(s), {recognized} texte(s) extrait(s).")
 
+    if errors:
+        raise SystemExit(f"{errors} lecture(s) OCR en échec technique")
+
 if __name__ == "__main__":
     main()
+
