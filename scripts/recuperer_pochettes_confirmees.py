@@ -76,15 +76,18 @@ def main():
     scanned = 0
     updated = 0
     ambiguous = 0
+    errors = 0
     while True:
         params = {"pageSize": 100, "filterByFormula": "AND(NOT({Front Cover}),NOT({Images verrouillées}))"}
         if cursor:
             params["offset"] = cursor
         page = get(API + "?" + urllib.parse.urlencode(params), at)
         for row in page.get("records", []):
+            if updated >= BATCH:
+                break
             scanned += 1
             f = row.get("fields", {})
-            if f.get("Front Cover") or f.get("Images verrouillées"):
+            if f.get("Front Cover") or f.get("Images verrouillées") or f.get("Ne pas retraiter"):
                 continue
             release_id = str(f.get("Discogs release_id", "")).strip()
             candidate = None
@@ -136,15 +139,19 @@ def main():
                     updated += 1
                     print(f"IMAGE CONFIRMÉE: {release_id}")
             except Exception as exc:
+                errors += 1
                 print(f"{release_id}: échec sans nouvelle attribution: {exc}")
             time.sleep(1.2)
         cursor = page.get("offset")
         if not cursor or updated >= BATCH:
             break
     print(f"Bilan: {scanned} examinés, {updated} images importées, {ambiguous} pressages sans identification confirmée")
-    if scanned and not updated:
-        raise SystemExit("ÉCHEC MÉTIER : aucune nouvelle pochette importée ; vérifier les candidats et les erreurs ci-dessus.")
+    if errors:
+        raise SystemExit(f"ÉCHEC TECHNIQUE : {errors} import(s) de pochette en erreur.")
+    if not updated:
+        print("Aucune pochette importable : identification ou image source manquante; aucune attribution forcée.")
 
 
 if __name__ == "__main__":
     main()
+
