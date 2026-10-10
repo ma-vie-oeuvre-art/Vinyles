@@ -150,7 +150,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v11:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v12:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
