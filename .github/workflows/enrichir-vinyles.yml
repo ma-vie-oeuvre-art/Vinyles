@@ -12,49 +12,15 @@ on:
     - cron: '*/5 * * * *'
 permissions:
   contents: write
-env:
-  PYTHONUNBUFFERED: '1'
-  OMP_THREAD_LIMIT: '1'
+concurrency:
+  group: enrichissement-vinyles
+  cancel-in-progress: false
 jobs:
-  coordonner:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Appliquer immédiatement les corrections du moteur
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/coordonner_traitements.py
-  importer:
-    needs: coordonner
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    concurrency:
-      group: importation-photos-vinyles
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Importer les nouvelles photos sans attendre l’enrichissement
-        env:
-          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: PHOTO_SOURCE_SHA="$(git rev-parse HEAD)" python scripts/importer_photos.py
   enrichir:
-    needs: importer
-    concurrency:
-      group: enrichissement-vinyles
-      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -63,21 +29,53 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
         run: python scripts/verifier_configuration.py
+      - name: Importer automatiquement les lots de photos
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/importer_photos.py
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra
-          python -m pip install --disable-pip-version-check Pillow
           python -m py_compile scripts/lire_pochettes.py scripts/enrichir_vinyles.py
       - name: Extraire le texte des pochettes dans Airtable
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           OCR_BATCH_SIZE: '40'
-          OCR_WORKERS: '2'
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/lire_pochettes.py
       - name: Reconnaître les albums depuis les photos
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: python scripts/reconnaitre_albums.py
+      - name: Sélectionner automatiquement les pochettes encore incertaines
+        id: neural
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+        run: python scripts/lire_pochettes_neural.py --select
+      - name: Réutiliser les modèles du second lecteur
+        if: steps.neural.outputs.count != '0'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.EasyOCR/model
+          key: neural-ocr-v1-${{ runner.os }}-python312
+      - name: Installer le second lecteur uniquement si nécessaire
+        if: steps.neural.outputs.count != '0'
+        run: |
+          python -m pip install --disable-pip-version-check torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check easyocr==1.7.2
+      - name: Relire automatiquement les pochettes incertaines
+        if: steps.neural.outputs.count != '0'
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+        run: python scripts/lire_pochettes_neural.py
+      - name: Reprendre la reconnaissance avec les nouveaux indices
+        if: steps.neural.outputs.count != '0'
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
@@ -90,7 +88,7 @@ jobs:
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/enrichir_vinyles.py
-      - name: Qualifier les recherches de tous les bacs photographiés
+      - name: Qualifier les recherches du bac B-08
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}

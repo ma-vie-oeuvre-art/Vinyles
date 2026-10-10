@@ -52,6 +52,25 @@ def collect(result, ocr, albums, candidates, catalogue=None):
         albums[key] = (credit, title)
         candidates[item['id']] = {'release_id': item['id'], 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
 
+def neural_evidence(source):
+    match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
+    if not match:
+        return [], ''
+    try:
+        regions = json.loads(match[1])
+    except (ValueError, TypeError):
+        return [], ''
+    regions = [r for r in regions if r.get('confidence', 0) >= .35 and words(r.get('text', ''))]
+    if not regions:
+        return [], ''
+    maximum = max(r['height'] for r in regions)
+    prominent = [r for r in regions if r['height'] >= maximum * .45][:8]
+    ordered = sorted(prominent, key=lambda r: r['y'])
+    texts = [r['text'] for r in prominent]
+    queries = texts[:5] + [' '.join(r['text'] for r in ordered[i:i+2]) for i in range(min(4, len(ordered)-1))]
+    # The full OCR remains the corroboration source; large lettering breaks ties.
+    return list(dict.fromkeys(queries)), ' | '.join(texts)
+
 def main():
     at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
     dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
@@ -59,7 +78,7 @@ def main():
     cursor = None
     rows = []
     while True:
-        args = {'pageSize': 100, 'filterByFormula': "AND(OR({Statut}='Dicté',AND({Statut}='À revoir',FIND('[OCR zones v3]',{Transcription source})>0)),OR(NOT({Titre}),NOT({Artiste})))"}
+        args = {'pageSize': 100, 'filterByFormula': "AND(OR({Statut}='Dicté',AND({Statut}='À revoir',OR(FIND('[OCR zones v3]',{Transcription source})>0,FIND('[OCR neural texte]',{Transcription source})>0))),OR(NOT({Titre}),NOT({Artiste})))"}
         if cursor:
             args['offset'] = cursor
         page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
@@ -76,7 +95,10 @@ def main():
         f = row['fields']
         if f.get('Ne pas retraiter') or f.get('Discogs release_id'):
             continue
-        ocr = f.get('Transcription source', '').partition('[OCR pochette]')[2].strip()
+        source = f.get('Transcription source', '')
+        ocr = (source.partition('[OCR pochette]')[2] or source.partition('[OCR neural texte]')[2]).strip()
+        neural_queries, prominent = neural_evidence(source)
+        ocr = re.sub(r'\[OCR neural regions\] [^\n]+', '', ocr)
         if not ocr:
             continue
         if not should_search(ocr, f.get('Diagnostic', ''), today):
@@ -87,7 +109,7 @@ def main():
         started = time.monotonic()
         lines = [s.strip() for s in ocr.replace('\n', ' | ').split(' | ') if 1 <= len(words(s)) <= 10 and sum(len(w) >= 4 for w in words(s)) >= 1]
         lines.sort(key=lambda s: (sum(len(w) >= 4 for w in words(s)) >= 2, sum(len(w) for w in words(s))/len(words(s))), reverse=True)
-        queries = list(dict.fromkeys(lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
+        queries = list(dict.fromkeys(neural_queries + lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
         albums = {}
         candidates = {}
         def search(params):
@@ -110,6 +132,12 @@ def main():
             for query in queries[:10]:
                 result = search({'q': query[:100], 'type': 'release', 'format': 'Vinyl', 'per_page': 30})
                 collect(result, ocr, albums, candidates)
+        if len(albums) > 1 and prominent:
+            strong = {key: value for key, value in albums.items() if supported(prominent, *value)}
+            if len(strong) == 1:
+                albums = strong
+                artist, title = next(iter(strong.values()))
+                candidates = {key: value for key, value in candidates.items() if value['titre'].rpartition(' - ')[0] == artist and re.sub(r'\s*\([^)]*\)\s*$', '', value['titre'].rpartition(' - ')[2]) == title}
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
         if len(albums) == 1:
             artist, title = next(iter(albums.values()))
