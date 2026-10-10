@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 import urllib.parse
 import urllib.request
+from PIL import Image, ImageOps
 
 BASE = "apporVr2Na6l5HGh2"
 TABLE = "tblcqsKKwNW28bMSE"
@@ -55,8 +56,23 @@ def scan(url):
                 text=True, capture_output=True, timeout=35)
             if p.returncode: raise RuntimeError("OCR failed")
             outputs.append(p.stdout)
+        # Isolate broad cover zones: full-photo OCR misses large, thin lettering.
+        with Image.open(f.name) as original:
+            im = ImageOps.exif_transpose(original).convert('RGB')
+            w, h = im.size
+            for top, bottom in ((.10, .40), (.30, .65), (.60, .90)):
+                crop = im.crop((0, int(h*top), w, int(h*bottom)))
+                crop = ImageOps.autocontrast(ImageOps.grayscale(crop))
+                crop = crop.resize((w*2, crop.height*2))
+                with tempfile.NamedTemporaryFile(suffix='.png') as zone:
+                    crop.save(zone.name)
+                    for mode in ('6', '11'):
+                        p = subprocess.run(['tesseract', zone.name, 'stdout', '-l', 'eng+fra', '--psm', mode],
+                            text=True, capture_output=True, timeout=35)
+                        if p.returncode: raise RuntimeError('OCR zone failed')
+                        outputs.append(p.stdout)
     lines = list(dict.fromkeys(re.sub(r"\s+", " ", x).strip() for output in outputs for x in output.splitlines()))
-    return " | ".join(x for x in lines if len(x) >= 3)[:4000]
+    return " | ".join(x for x in lines if len(x) >= 3)[:16000]
 
 def main():
     token = os.environ["AIRTABLE_TOKEN"]
@@ -74,7 +90,7 @@ def main():
         if (not image and not local) or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
             continue
         existing = f.get("Transcription source", "")
-        if "[OCR complément v2]" in existing:
+        if "[OCR zones v3]" in existing:
             continue
         if checked >= LIMIT:
             break
@@ -86,9 +102,9 @@ def main():
                 continue
             recognized += 1
             # Keep prior transcriptions; OCR is a clue, never a verified identification.
-            marker = '[OCR complément v2]' if '[OCR pochette]' in existing else '[OCR pochette]'
+            marker = '[OCR zones v3]' if '[OCR pochette]' in existing else '[OCR pochette]'
             source = (existing + "\n" if existing else "") + marker + " " + text
-            if marker == '[OCR pochette]': source += '\n[OCR complément v2] lecture complète effectuée'
+            if marker == '[OCR pochette]': source += '\n[OCR zones v3] lecture complète effectuée'
             source = source[:90000]
             if not DRY_RUN:
                 request_json(API + "/" + row["id"], token, {

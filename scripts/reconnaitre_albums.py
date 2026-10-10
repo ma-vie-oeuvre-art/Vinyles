@@ -13,6 +13,7 @@ def words(text):
 
 def supported(ocr, credit, title):
     visible = set(words(ocr))
+    title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
     title_words = [w for w in words(title) if len(w) >= 3 and w not in {'THE', 'AND', 'VOL'}]
     artist_words = [w for w in words(credit) if len(w) >= 3 and w not in {'THE', 'AND', 'HIS', 'HER', 'ORCHESTRA', 'ORCHESTRE', 'WITH'}]
     if not title_words or not all(w in visible for w in title_words):
@@ -28,7 +29,7 @@ def main():
     cursor = None
     rows = []
     while True:
-        args = {'pageSize': 100, 'filterByFormula': "AND({Statut}='Dicté',OR(NOT({Titre}),NOT({Artiste})))"}
+        args = {'pageSize': 100, 'filterByFormula': "AND(OR({Statut}='Dicté',AND({Statut}='À revoir',FIND('[OCR zones v3]',{Transcription source})>0)),OR(NOT({Titre}),NOT({Artiste})))"}
         if cursor:
             args['offset'] = cursor
         page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
@@ -43,7 +44,8 @@ def main():
         ocr = f.get('Transcription source', '').partition('[OCR pochette]')[2].strip()
         if not ocr:
             continue
-        lines = [s.strip() for s in ocr.split(' | ') if len(words(s)) >= 2]
+        lines = [s.strip() for s in ocr.replace('\n', ' | ').split(' | ') if 1 <= len(words(s)) <= 10 and sum(len(w) >= 4 for w in words(s)) >= 1]
+        lines.sort(key=lambda s: (sum(len(w) >= 4 for w in words(s)) >= 2, sum(len(w) for w in words(s))/len(words(s))), reverse=True)
         queries = list(dict.fromkeys(lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
         albums = {}
         candidates = {}
@@ -54,6 +56,7 @@ def main():
                 credit, sep, title = str(item.get('title', '')).rpartition(' - ')
                 if not sep or not supported(ocr, credit, title):
                     continue
+                title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
                 key = (tuple(words(credit)), tuple(words(title)))
                 albums[key] = (credit, title)
                 candidates[item['id']] = {'release_id': item['id'], 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
