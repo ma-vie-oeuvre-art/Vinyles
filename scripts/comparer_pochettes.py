@@ -30,11 +30,12 @@ def near_word(a, b):
 
 def expanded_words(text):
     text = str(text).replace('@', 'O')
+    text = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', text)
     text = re.sub(r'\bZ[Oo0]{2}1', '2001', text, flags=re.I)
     text = re.sub(r'(?<=\d)(?=[A-Za-z])|(?<=[A-Za-z])(?=\d)', ' ', text)
     result = words(text)
     for token in list(result):
-        if token.startswith('A') and len(token) > 5:
+        if token.startswith('AS') and len(token) > 5:
             result.append(token[1:])
         if token.startswith('THE') and len(token) > 7:
             tail = token[3:]
@@ -74,15 +75,20 @@ def main_heading(fields, candidates):
             heights.append(max(values))
         if len(heights) != len(tokens) or sum(height >= maximum*.35 for height in heights) < 2:
             continue
-        artist_height = max((height for w, height in printed if w in words(credit) and len(w) >= 4), default=0)
+        artist_terms = [(height,w) for w,height in printed if w in words(credit) and len(w)>=5 and not w.isdigit()]
+        artist_height, primary_name = max(artist_terms, default=(0,''))
         anonymous_specific = len(tokens) >= 4 and any(w.isdigit() and len(w)==4 for w in tokens) and sum(len(w)>=5 and w not in generic for w in tokens)>=2
-        if not anonymous_specific and (artist_height < maximum*.65 or not supported(source, credit, title)):
+        if not anonymous_specific and artist_height < maximum*.65:
             continue
         score = sum(heights)/len(heights)
         if score < maximum*.45:
             continue
-        if tokens not in groups or score > groups[tokens][0]:
-            groups[tokens] = (score, candidate)
+        artist_tokens = [w for w in words(credit) if w not in {'THE','AND','WITH','FEAT','FEATURING'}]
+        index = artist_tokens.index(primary_name) if primary_name in artist_tokens else 0
+        identity = ('ANONYMOUS',) if anonymous_specific else tuple(artist_tokens[max(0,index-1):index+1])
+        key = (identity,tokens)
+        if key not in groups or score > groups[key][0]:
+            groups[key] = (score, candidate)
     ordered = sorted(groups.values(), key=lambda item: item[0], reverse=True)
     if not ordered or (len(ordered)>1 and ordered[0][0] < ordered[1][0]*1.25):
         return None
@@ -99,7 +105,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v4:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v5:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -108,6 +114,28 @@ def should_compare(fields):
     today = datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
     return not retry or retry[1] <= today
 
+def canonical_candidate(fields):
+    if not any(marker in fields.get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]']):
+        return None
+    existing = str(fields.get('Discogs référence release_id',''))
+    if existing.isdigit():
+        return {'release_id': existing}
+    candidates = json.loads(fields.get('Candidats Discogs') or '[]')
+    return next((c for c in candidates if str(c.get('release_id','')).isdigit()), None)
+
+def canonical_marker(candidate):
+    return '[identite-canonique-v1:' + str(candidate['release_id']) + ']'
+
+def canonical_fields(candidate):
+    dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent':'VinylesInventaire/1.0 (personal catalog)'}
+    rid = str(candidate['release_id'])
+    release = request_json('https://api.discogs.com/releases/' + rid, dg)
+    time.sleep(1.2)
+    if str(release.get('id')) != rid or not release.get('title') or not release.get('artists'):
+        raise ValueError('Référence structurée invalide')
+    artist = release.get('artists_sort') or ', '.join(a['name'] for a in release['artists'])
+    return {'Artiste': artist, 'Titre': release['title'], 'Discogs référence release_id':rid, 'Discogs référence album':'https://www.discogs.com/release/'+rid}
+
 def headers():
     return {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
 
@@ -115,17 +143,21 @@ def select():
     rows = []
     offset = None
     while True:
-        args = {'pageSize': 100, 'filterByFormula': 'AND({Photos personnelles},OR(NOT({Artiste}),NOT({Titre})),NOT({Ne pas retraiter}),NOT({Discogs release_id}))'}
+        args = {'pageSize': 100, 'filterByFormula': '{Photos personnelles}'}
         if offset:
             args['offset'] = offset
         page = request_json(f'{API}/{BASE}/{TABLE}?' + urllib.parse.urlencode(args), headers())
         for row in page.get('records', []):
             f = row['fields']
-            if f.get("Preuve d'identification") == 'Validation humaine':
+            if f.get('Ne pas retraiter') or f.get('Discogs release_id') or f.get("Preuve d'identification") == 'Validation humaine':
                 continue
             try:
                 candidates = json.loads(f.get('Candidats Discogs') or '[]')
-                if any(c.get('cover_url') for c in candidates) and should_compare(f):
+                known = bool(f.get('Artiste') and f.get('Titre'))
+                canon = canonical_candidate(f) if known else None
+                if known and canon and canonical_marker(canon) not in f.get('Transcription source',''):
+                    rows.append(row)
+                elif not known and any(c.get('cover_url') for c in candidates) and should_compare(f):
                     rows.append(row)
             except (ValueError, TypeError):
                 continue
@@ -200,7 +232,15 @@ def run():
     for row in rows:
         started = time.monotonic()
         f = request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers())['fields']
-        if f.get("Preuve d'identification") == 'Validation humaine' or f.get('Ne pas retraiter') or f.get('Discogs release_id') or (f.get('Artiste') and f.get('Titre')):
+        if f.get("Preuve d'identification") == 'Validation humaine' or f.get('Ne pas retraiter') or f.get('Discogs release_id'):
+            continue
+        if f.get('Artiste') and f.get('Titre'):
+            candidate = canonical_candidate(f)
+            if candidate and canonical_marker(candidate) not in f.get('Transcription source',''):
+                updates = canonical_fields(candidate)
+                updates['Transcription source'] = f.get('Transcription source','') + '\n' + canonical_marker(candidate)
+                request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': updates})
+                print(f"{row['id']}: artiste et titre vérifiés dans les champs structurés", flush=True)
             continue
         candidates = json.loads(f.get('Candidats Discogs') or '[]')
         stamp = fingerprint(f)
@@ -259,7 +299,15 @@ def run():
             variants = re.sub(r'\bZ[Oo0]{2}1', '2001', variants, flags=re.I)
             variants = re.sub(r'(?<=\d)(?=[A-Za-z])|(?<=[A-Za-z])(?=\d)', ' ', variants)
             individual = [w for w in words(variants) if len(w) >= 4 and w not in {'STEREO','MONO','RECORDS','VOLUME','POLYDOR','CORAL','DECCA'}]
-            queries = list(dict.fromkeys(queries[:4] + individual[:8]))[:10]
+            region_match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
+            heading_query = ''
+            if region_match:
+                primary_regions = sorted(json.loads(region_match[1]), key=lambda r: r['height'], reverse=True)[:4]
+                primary_text = ' '.join(r['text'] for r in primary_regions)
+                primary_text = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', primary_text)
+                primary_tokens = [w for w in words(primary_text.replace('@','O')) if len(w)>=3 and w not in {'THE','AND','WITH','STEREO','MONO'}]
+                heading_query = ' '.join(dict.fromkeys(primary_tokens))
+            queries = list(dict.fromkeys(([heading_query] if heading_query else []) + queries[:4] + individual[:8]))[:10]
             dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
             masters = {}
             for query in queries:
@@ -323,7 +371,10 @@ def run():
                     candidate = {**candidate, 'release_id': master['main_release']}
                 resolved.append(candidate)
             matches = resolved
-            updates.update({'Transcription source': f.get('Transcription source', '') + ('\n[Identité visuelle vérifiée]' if scores[0][0] else '\n[Titre principal vérifié]'), 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
+            canonical = canonical_fields(matches[0])
+            updates.update(canonical)
+            artist, title = canonical['Artiste'], canonical['Titre']
+            updates.update({'Transcription source': f.get('Transcription source', '') + ('\n[Identité visuelle vérifiée]' if scores[0][0] else '\n[Titre principal vérifié]') + '\n' + canonical_marker(matches[0]), 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
                 'Diagnostic': (f'Album reconnu automatiquement par correspondances géométriques des pochettes ({scores[0][0]} points concordants); pressage précis non attribué.' if scores[0][0] else 'Album reconnu automatiquement par le titre principal imprimé et son artiste ou son volume; référence Discogs concordante, pressage précis non attribué.')})
             print(f"{row['id']}: album reconnu " + (f"par image ({scores[0][0]} points)" if scores[0][0] else 'par titre principal imprimé'), flush=True)
         elif unavailable:

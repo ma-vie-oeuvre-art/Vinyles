@@ -58,6 +58,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Vérifier les règles de reconnaissance automatique
+        run: python scripts/test_reconnaissance_automatique.py
       - name: Vérifier la configuration
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}

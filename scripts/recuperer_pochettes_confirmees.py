@@ -139,13 +139,18 @@ def main():
         if f.get('Front Cover') and single_source_image(f.get('Images Discogs — URLs sources')):
             continue  # Discogs can call its only image "secondary"; no additional cover exists.
         release_id = str(f.get("Discogs release_id", "")).strip()
+        persisted_reference = False
+        reference_id = str(f.get('Discogs référence release_id', '')).strip()
+        if not release_id.isdecimal() and reference_id.isdecimal() and f.get('Artiste') and f.get('Titre'):
+            release_id = reference_id
+            persisted_reference = True
         candidate = None
         if not release_id.isdecimal():
             candidate = unique_candidate(f)
             if candidate:
                 release_id = str(candidate["release_id"])
         try:
-            master_id = None
+            master_id = ('r' + release_id) if persisted_reference else None
             if release_id.isdecimal():
                 release = get(f"https://api.discogs.com/releases/{release_id}", discogs)
             elif f.get('Titre') and f.get('Artiste'):
