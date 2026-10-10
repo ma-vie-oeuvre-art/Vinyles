@@ -26,7 +26,7 @@ def supported(ocr, credit, title):
     return bool(artist_words) and sum(w in visible for w in artist_words) / len(artist_words) >= 0.65
 
 def recognition_stamp(ocr):
-    return '[recognition-v1:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
+    return '[recognition-v2:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
 
 def should_search(ocr, diagnostic, today):
     if recognition_stamp(ocr) not in diagnostic:
@@ -48,7 +48,8 @@ def collect(result, ocr, albums, candidates, catalogue=None):
         if not sep or not supported(ocr, credit, title):
             continue
         title = re.sub(r'\s*\([^)]*\)\s*$', '', title)
-        key = (tuple(words(credit)), tuple(words(title)))
+        master = item.get('master_id')
+        key = ('master', int(master)) if master else (tuple(words(credit)), tuple(words(title)))
         albums[key] = (credit, title)
         candidates[item['id']] = {'release_id': item['id'], 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year')}
 
@@ -134,6 +135,11 @@ def main():
                 collect(result, ocr, albums, candidates)
         if len(albums) > 1 and prominent:
             strong = {key: value for key, value in albums.items() if supported(prominent, *value)}
+            # An artist's name also matches every self-titled search result.
+            # Prefer an independently printed album title when one is visible.
+            specific = {key: value for key, value in strong.items() if set(words(value[1])) - set(words(value[0])) - {'THE', 'AND', 'VOL'}}
+            if specific:
+                strong = specific
             if len(strong) == 1:
                 albums = strong
                 artist, title = next(iter(strong.values()))

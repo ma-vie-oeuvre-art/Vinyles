@@ -139,3 +139,8 @@ jobs:
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
           DRY_RUN: '0'
         run: python scripts/completer_metadonnees.py
+
+      - name: Vérifier les résultats réels de l'automatisation
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+        run: python scripts/verifier_resultat_automatique.py
