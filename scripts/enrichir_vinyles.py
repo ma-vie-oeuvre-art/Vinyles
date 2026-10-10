@@ -35,12 +35,21 @@ def request_json(url, headers, data=None, method=None):
         return json.load(response)
 
 
+def eligible(fields):
+    return (not fields.get(FIELDS["candidats"])
+            and not fields.get(FIELDS["ne_pas_retraiter"])
+            and not fields.get("Discogs release_id")
+            and (fields.get(FIELDS["numero"])
+                 or (fields.get(FIELDS["artiste"]) and fields.get(FIELDS["titre"]))
+                 or "[OCR pochette]" in fields.get("Transcription source", "")))
+
+
 def main():
     token = os.environ["AIRTABLE_TOKEN"]
     discogs_token = os.environ.get("DISCOGS_TOKEN", "")
     if not discogs_token:
         print("DISCOGS_TOKEN absent : arrêt sans modifier Airtable", file=sys.stderr)
-        return
+        raise SystemExit(1)
     airtable_headers = {"Authorization": f"Bearer {token}",
                        "Content-Type": "application/json"}
     discogs_headers = {"User-Agent": "VinylesInventaire/1.0 (personal catalog)",
@@ -59,7 +68,7 @@ def main():
         for row in page.get("records", []):
             fields = row.get("fields", {})
             # Do not reprocess a row where candidates already exist.
-            if (not fields.get(FIELDS["candidats"]) and not fields.get(FIELDS["ne_pas_retraiter"]) and (fields.get(FIELDS["numero"]) or (fields.get(FIELDS["artiste"]) and fields.get(FIELDS["titre"])) or "[OCR pochette]" in fields.get("Transcription source", ""))):
+            if eligible(fields):
                 selected.append(row)
                 if len(selected) >= LIMIT:
                     break
@@ -67,6 +76,7 @@ def main():
         if not cursor:
             break
     print(f"Fiches en attente à examiner: {len(selected)}")
+    errors = 0
     for row in selected:
         f = row["fields"]
         catno = str(f.get(FIELDS["numero"], "")).strip()
@@ -112,9 +122,13 @@ def main():
                                          FIELDS["diagnostic"]: diagnosis}})
             print(f"{row['id']}: {len(candidates)} candidat(s)" + (" (simulation)" if DRY_RUN else ""))
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+            errors += 1
             print(f"{row['id']}: accès Discogs/Airtable indisponible: {exc}", file=sys.stderr)
         time.sleep(2.2)  # stay conservatively under Discogs rate limits
 
+    if errors:
+        raise SystemExit(f"{errors} recherche(s) en échec technique")
 
 if __name__ == "__main__":
     main()
+
