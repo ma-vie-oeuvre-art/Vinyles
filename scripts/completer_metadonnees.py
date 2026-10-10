@@ -140,6 +140,10 @@ def restore_documented_fields(f):
         out.update({'N° catalogue':None,'Cause':'Numéro de fascicule, pas de catalogue'})
     if 'réputation sonore laissée vide' in f.get('Source de la réputation','').lower(): out['Réputation sonore']=None
     source=f.get('Transcription source','')
+    identity=re.search(r'Ce disque\s*:\s*([^,\n]+),\s*(.*?)\s*—\s*(.+)',history,re.I)
+    if identity:
+        if not f.get('Titre'): out['Titre']=identity[2].strip()
+        if not f.get('Artiste'): out['Artiste']=identity[1].strip()+' / '+identity[3].strip().rstrip('.')
     cover=re.search(r'\[photo pochette\]\s*(.*?)(?=\[photo|$)',source,re.S|re.I)
     if cover and (not f.get('Titre') or not f.get('Artiste')):
         parts=[p.strip().rstrip('.') for p in cover[1].split(' — ')]
@@ -315,7 +319,7 @@ def main():
             retry=re.search(r'Prochaine recherche automatique : (\d{4}-\d{2}-\d{2})',report)
             today=datetime.now(ZoneInfo('America/Toronto')).date()
             expired=bool(retry and retry[1]<=today.isoformat())
-            needed = (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
+            needed = os.getenv('DERIVED_ONLY','0')!='1' and (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
             if needed and fetched < 300:
                 release=resolve(effective,dg,cache); fetched+=1
                 if release:
@@ -333,3 +337,4 @@ def main():
     if errors:raise SystemExit(1)
 
 if __name__=='__main__':main()
+

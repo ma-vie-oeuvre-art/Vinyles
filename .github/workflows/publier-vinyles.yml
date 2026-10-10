@@ -1,7 +1,7 @@
 name: Publication incrémentale Vinyles
 on:
   workflow_run:
-    workflows: ['Enrichissement différé des vinyles']
+    workflows: ['Enrichissement différé des vinyles', 'Réparation automatique des champs vinyles']
     types: [completed]
     branches: [main]
   push:

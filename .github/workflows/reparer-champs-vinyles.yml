@@ -1,0 +1,31 @@
+name: Réparation automatique des champs vinyles
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/completer_metadonnees.py'
+      - '.github/workflows/reparer-champs-vinyles.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: reparation-champs-vinyles
+  cancel-in-progress: false
+jobs:
+  reparer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Réparer les champs validés et recalculer les champs dérivés
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          DERIVED_ONLY: '1'
+          DRY_RUN: '0'
+        run: python scripts/completer_metadonnees.py
