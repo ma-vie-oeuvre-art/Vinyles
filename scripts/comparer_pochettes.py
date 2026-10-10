@@ -99,6 +99,7 @@ def main_heading(fields, candidates):
             if key!=other and key[0]==other[0] and set(key[1])<set(other[1]) and groups[other][0]>=groups[key][0]*.95:
                 remove.add(key)
     ordered=sorted((value for key,value in groups.items() if key not in remove),key=lambda item:item[0],reverse=True)
+    print('Titres principaux admissibles: ' + json.dumps([(round(score,1),candidate.get('titre')) for score,candidate in ordered[:10]],ensure_ascii=False),flush=True)
     if not ordered or (len(ordered)>1 and ordered[0][0]<ordered[1][0]*1.25):
         return None
     return ordered[0][1]
@@ -114,7 +115,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v6:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v7:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -322,6 +323,7 @@ def run():
                 primary_tokens = [w for w in words(primary_text.replace('@','O')) if len(w)>=3 and w not in {'THE','AND','WITH','STEREO','MONO'}]
                 heading_query = ' '.join(dict.fromkeys(primary_tokens))
             queries = list(dict.fromkeys(([heading_query] if heading_query else []) + queries[:4] + individual[:8]))[:10]
+            print('Requêtes de titres: ' + json.dumps(queries,ensure_ascii=False),flush=True)
             dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
             masters = {}
             for query in queries:
@@ -349,6 +351,7 @@ def run():
                                 masters['release:'+str(item['id'])] = {'release_id':item['id'],'master_id':item.get('master_id'),'titre':item['title'],'cover_url':item['cover_image']}
             master_candidates = sorted(masters.values(), key=priority, reverse=True)[:100]
             master_candidates = [c for c in master_candidates if c['cover_url'] not in urls]
+            print('Albums prioritaires: ' + json.dumps([c['titre'] for c in master_candidates[:12]],ensure_ascii=False),flush=True)
             with ThreadPoolExecutor(max_workers=4) as pool:
                 for c, reference, failure in pool.map(load, master_candidates):
                     if failure:
