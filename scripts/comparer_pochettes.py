@@ -415,11 +415,11 @@ def run():
                     if score:
                         scores.append((score, c))
             print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
+        scores = [(score,candidate) for score,candidate in scores if printed_number_matches(f,candidate)]
         if not scores:
             heading = main_heading(f, candidates + master_candidates)
             if heading:
                 scores = [(0, heading)]
-        scores = [(score,candidate) for score,candidate in scores if printed_number_matches(f,candidate)]
         print('Correspondances de pochettes: ' + json.dumps([(score,candidate.get('titre')) for score,candidate in scores],ensure_ascii=False),flush=True)
         scores.sort(key=lambda item: item[0], reverse=True)
         groups = {}
