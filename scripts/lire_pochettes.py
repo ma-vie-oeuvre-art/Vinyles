@@ -59,7 +59,7 @@ def main():
     errors = 0
     for row in records(token):
         f = row.get("fields", {})
-        image = f.get("Front Cover") or []
+        image = f.get("Photos personnelles") or f.get("Front Cover") or []
         if not image or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
             continue
         existing = f.get("Transcription source", "")
