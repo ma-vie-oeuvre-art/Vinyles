@@ -2,7 +2,8 @@
 """Ajouter des pochettes Discogs identifiées de manière conservatrice, tous bacs.
 
 Chaque exemplaire reste distinct. Ne déduit JAMAIS un release_id d'une liste
-de candidats : les pressages ambigus restent sans pochette.
+de candidats. Les albums reconnus peuvent recevoir des pochettes de référence,
+explicitement distinctes de la confirmation du pressage physique.
 """
 import json
 import os
@@ -49,6 +50,37 @@ def unique_candidate(f):
     return matches[0] if len(matches) == 1 else None
 
 
+def album_reference(f, headers):
+    """Retrouver automatiquement un album, sans attribuer son pressage à l'objet."""
+    from qualifier_vinyles import concordant, norm
+    title = f.get("Titre", "").strip()
+    artist = f.get("Artiste", "").split(" / ")[0].strip()
+    if not title:
+        return None
+    params = {"type": "master", "release_title": title, "per_page": 50}
+    if norm(artist) not in ("ARTISTESVARIES", "VARIOUS", "AUDIOFIDELITY", ""):
+        params["artist"] = artist
+    data = get("https://api.discogs.com/database/search?" + urllib.parse.urlencode(params), headers)
+    album_fields = {k: v for k, v in f.items() if k != "N° catalogue"}
+    matches = {}
+    for item in data.get("results", []):
+        if item.get("type") != "master":
+            continue
+        if concordant(album_fields, {"release_id": item.get("id"), "titre": item.get("title")}):
+            matches[item["id"]] = item
+    if len(matches) != 1:
+        return None
+    master_id = next(iter(matches))
+    master = get(f"https://api.discogs.com/masters/{master_id}", headers)
+    main_id = master.get("main_release")
+    if not main_id or str(master.get("id")) != str(master_id):
+        return None
+    release = get(f"https://api.discogs.com/releases/{main_id}", headers)
+    if not any(fmt.get("name", "").lower() == "vinyl" for fmt in release.get("formats", [])):
+        return None
+    return master_id, release
+
+
 def main():
     at = {"Authorization": f"Bearer {os.environ['AIRTABLE_TOKEN']}"}
     discogs = {"User-Agent": "VinylesInventaire/1.0 (personal catalog)"}
@@ -77,12 +109,21 @@ def main():
                 candidate = unique_candidate(f)
                 if candidate:
                     release_id = str(candidate["release_id"])
-            if not release_id.isdecimal():
-                ambiguous += 1
-                print(f"{f.get('Bac')}/{f.get('Ordre dans le bac')}: pressage non confirmé; aucune image attribuée")
-                continue
             try:
-                release = get(f"https://api.discogs.com/releases/{release_id}", discogs)
+                master_id = None
+                if release_id.isdecimal():
+                    release = get(f"https://api.discogs.com/releases/{release_id}", discogs)
+                elif f.get("Bac") == "B-08":
+                    reference = album_reference(f, discogs)
+                    if not reference:
+                        ambiguous += 1
+                        print(f"{f.get('Bac')}/{f.get('Ordre dans le bac')}: album sans référence unique; images en attente")
+                        continue
+                    master_id, release = reference
+                    release_id = str(release["id"])
+                else:
+                    ambiguous += 1
+                    continue
                 if str(release.get("id")) != release_id:
                     raise ValueError("Discogs release_id incohérent")
                 if candidate:
@@ -112,7 +153,10 @@ def main():
                     if secondary and not f.get("Back Cover"):
                         fields["Back Cover"] = [{"url": "https://images.weserv.nl/?url=" + urllib.parse.quote(secondary, safe="") + "&output=jpg"}]
                     fields["Images Discogs — URLs sources"] = "\n".join(f"{i.get('type', 'secondary')}: {i.get('uri')}" for i in images if i.get("uri"))
-                    if candidate:
+                    if master_id:
+                        fields["Images Discogs — URLs sources"] = f"Album de référence : https://www.discogs.com/master/{master_id}; images de la version {release_id}, pressage physique non confirmé.\\n" + fields["Images Discogs — URLs sources"]
+                        fields["Diagnostic"] = f"Pochettes de référence de l’album Discogs m{master_id}, version illustrée r{release_id}. Le pressage de cet exemplaire reste à confirmer; aucune valeur attribuée."
+                    elif candidate:
                         fields["Diagnostic"] = "Pochette Discogs indicative : artiste, titre, format et catalogue concordants; pressage physique non confirmé."
                     patch(f"{API}/{row['id']}", at, fields)
                     fresh = get(f"{API}/{row['id']}", at)
