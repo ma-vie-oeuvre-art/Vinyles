@@ -67,8 +67,10 @@ def main():
             raise ValueError(f"Position Airtable dupliquée : {key}; site inchangé")
         seen.add(key)
         cover = as_url(r.get("Front Cover"))
-        personal = bool(bac == 'B-08' and r.get('Front Cover') and
-                        r['Front Cover'][0].get('filename') == f'IMG_{820 + int(pos):04}.jpeg')
+        if not cover:
+            cover = as_url(r.get("Photos personnelles"))
+        personal = bool(bac == 'B-08' and (r.get('Front Cover') or r.get('Photos personnelles')) and
+                        (r.get('Front Cover') or r.get('Photos personnelles'))[0].get('filename') == f'IMG_{820 + int(pos):04}.jpeg')
         if personal:
             cover = f'photos/B-08/IMG_{820 + int(pos):04}.jpeg'
         release = r.get("Discogs release_id")
@@ -94,7 +96,7 @@ def main():
             pos = by_key[key]
             old = existing[pos]
             if bac == 'B-08':
-                metadata = {name: item[name] for name in ('t', 'a', 'k')}
+                metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']
                 metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Diagnostic', ''), 'photo': personal})
@@ -106,6 +108,7 @@ def main():
                     updated += 1
                 continue
             continue
+        item.update({"s": r.get("Statut", ""), "diag": r.get("Diagnostic", ""), "photo": personal})
         added.append(item)
         by_key[key] = len(existing) + len(added) - 1
     # La lecture paginée complète doit réussir avant toute suppression.
