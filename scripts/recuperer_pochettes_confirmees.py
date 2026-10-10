@@ -60,8 +60,8 @@ def main():
     scanned = 0
     updated = 0
     ambiguous = 0
-    while scanned < BATCH:
-        params = {"pageSize": min(100, BATCH - scanned), "filterByFormula": "AND(NOT({Front Cover}),NOT({Images verrouillées}))"}
+    while True:
+        params = {"pageSize": 100, "filterByFormula": "AND(NOT({Front Cover}),NOT({Images verrouillées}))"}
         if cursor:
             params["offset"] = cursor
         page = get(API + "?" + urllib.parse.urlencode(params), at)
@@ -98,25 +98,32 @@ def main():
                 if not image or not image.startswith("https://"):
                     print(f"{release_id}: aucune pochette exploitable")
                     continue
+                # Charger le recto et, si disponible, une premiere image secondaire (verso presume).
+                secondary = next((i.get("uri") for i in images if i.get("type") == "secondary" and i.get("uri") and i.get("uri") != image), None)
                 # Airtable importe le fichier distant dans son champ attachment.
                 if os.getenv("DRY_RUN", "1") == "1":
                     print(f"SIMULATION: {release_id} -> {image}")
                 else:
                     proxy = "https://images.weserv.nl/?url=" + urllib.parse.quote(image, safe="") + "&output=jpg"
                     fields = {"Front Cover": [{"url": proxy}]}
+                    if secondary and not f.get("Back Cover"):
+                        fields["Back Cover"] = [{"url": "https://images.weserv.nl/?url=" + urllib.parse.quote(secondary, safe="") + "&output=jpg"}]
+                    fields["Images Discogs — URLs sources"] = "\n".join(f"{i.get('type', 'secondary')}: {i.get('uri')}" for i in images if i.get("uri"))
                     if candidate:
                         fields["Diagnostic"] = "Pochette Discogs indicative : artiste, titre, format et catalogue concordants; pressage physique non confirmé."
                     patch(f"{API}/{row['id']}", at, fields)
                     fresh = get(f"{API}/{row['id']}", at)
                     if not any(a.get("size") for a in fresh.get("fields", {}).get("Front Cover", [])):
                         raise ValueError("La pièce jointe n'est pas confirmée dans Airtable")
+                    if "Back Cover" in fields and not any(a.get("size") for a in fresh.get("fields", {}).get("Back Cover", [])):
+                        print(f"{release_id}: verso non confirme; recto confirme")
                     updated += 1
                     print(f"IMAGE CONFIRMÉE: {release_id}")
             except Exception as exc:
                 print(f"{release_id}: échec sans nouvelle attribution: {exc}")
             time.sleep(1.2)
         cursor = page.get("offset")
-        if not cursor:
+        if not cursor or updated >= BATCH:
             break
     print(f"Bilan: {scanned} examinés, {updated} images importées, {ambiguous} pressages sans identification confirmée")
 
