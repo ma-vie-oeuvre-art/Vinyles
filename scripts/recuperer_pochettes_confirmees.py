@@ -40,7 +40,7 @@ def main():
     updated = 0
     ambiguous = 0
     while scanned < BATCH:
-        params = {"pageSize": min(100, BATCH - scanned)}
+        params = {"pageSize": min(100, BATCH - scanned), "filterByFormula": "{Bac}='B-08'"}
         if cursor:
             params["offset"] = cursor
         page = get(API + "?" + urllib.parse.urlencode(params), at)
