@@ -75,6 +75,17 @@ def neural_evidence(source):
     # The full OCR remains the corroboration source; large lettering breaks ties.
     return list(dict.fromkeys(queries)), ' | '.join(texts)
 
+def reset_reference(fields):
+    if 'metadata-v2' not in fields.get('Enrichissement automatique', ''):
+        return {}
+    keys = ['Discogs référence release_id', 'Discogs référence album', 'Version de référence — détails', 'Tracklist JSON', 'Nombre de plages', 'Titres — index normalisé', 'Famille', 'Familles', "Année de l'album", 'Possédé par (Discogs)', 'Recherché par (Discogs)', 'Note Discogs (sur 5)', 'Nombre de notes (Discogs)', 'Exemplaires en vente (Discogs)', 'Valeur minimale', 'Prix suggéré VG+ (Discogs)', 'Prix suggéré Mint (Discogs)', "Source de l'estimation", "Date de l'estimation", "Qualité d'enregistrement (source)", 'Informations historiques', 'Enrichissement automatique']
+    updates = {key: None for key in keys if key in fields}
+    if not fields.get('Images verrouillées'):
+        updates.update({key: [] for key in ['Front Cover', 'Back Cover'] if key in fields})
+        if 'Images Discogs — URLs sources' in fields:
+            updates['Images Discogs — URLs sources'] = None
+    return updates
+
 def main():
     at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
     dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
@@ -121,7 +132,8 @@ def main():
         if len(primary) == 1:
             artist, title = next(iter(primary.values()))
             retained = [item for item in prior if supported(prominent, *str(item.get('titre', '')).rpartition(' - ')[::2])]
-            request_json(endpoint + '/' + row['id'], at, {'fields': {'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
+            reset = reset_reference(f) if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))) else {}
+            request_json(endpoint + '/' + row['id'], at, {'fields': {**reset, 'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
             print(f'{row["id"]}: album reconnu depuis les preuves conservées, sans nouvelle recherche', flush=True)
             continue
         if not should_search(ocr, f.get('Diagnostic', ''), today):
@@ -171,6 +183,8 @@ def main():
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
         if len(albums) == 1:
             artist, title = next(iter(albums.values()))
+            if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))):
+                updates.update(reset_reference(f))
             updates.update({'Artiste': artist, 'Titre': title, 'Diagnostic': 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin. [Titre vérifié automatiquement]'})
             print(f'{row["id"]}: album reconnu')
         else:
@@ -179,13 +193,7 @@ def main():
             if checking_title and f.get('Artiste') and f.get('Titre') and not supported(prominent, f['Artiste'], f['Titre']):
                 # A small track name must not retain an unrelated album reference.
                 updates.update({'Artiste': None, 'Titre': None, 'Candidats Discogs': '[]'})
-                if 'metadata-v2' in f.get('Enrichissement automatique', ''):
-                    auto_fields = ['Discogs référence release_id', 'Discogs référence album', 'Version de référence — détails', 'Tracklist JSON', 'Nombre de plages', 'Titres — index normalisé', 'Famille', 'Familles', "Année de l'album", 'Possédé par (Discogs)', 'Recherché par (Discogs)', 'Note Discogs (sur 5)', 'Nombre de notes (Discogs)', 'Exemplaires en vente (Discogs)', 'Valeur minimale', 'Prix suggéré VG+ (Discogs)', 'Prix suggéré Mint (Discogs)', "Source de l'estimation", "Date de l'estimation", "Qualité d'enregistrement (source)", 'Informations historiques', 'Enrichissement automatique']
-                    updates.update({field: None for field in auto_fields if field in f})
-                    if not f.get('Images verrouillées'):
-                        updates.update({field: [] for field in ['Front Cover', 'Back Cover'] if field in f})
-                        if 'Images Discogs — URLs sources' in f:
-                            updates['Images Discogs — URLs sources'] = None
+                updates.update(reset_reference(f))
                 updates['Diagnostic'] = 'Ancienne attribution automatique retirée: le titre correspondait à un texte secondaire, sans confirmation dans les textes principaux. Recherche automatique poursuivie.'
             updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + (today + timedelta(days=1)).isoformat()
         request_json(endpoint + '/' + row['id'], at, {'fields': updates})
