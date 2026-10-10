@@ -46,7 +46,17 @@ assert not c.printed_number_matches({'Transcription source':"[OCR neural texte] 
 assert c.printed_number_matches({'Transcription source':'[OCR neural texte] Main heading'}, {'titre':'Artist - Series N° 6'})
 print('Numéros de série imprimés vérifiés')
 
-import inspect
-import qualifier_vinyles as qualifier
-assert 'Recherche visuelle suivante' in inspect.getsource(qualifier.main)
-print('Conservation des délais de reprise vérifiée')
+import importlib
+import urllib.error
+c=importlib.reload(c)
+attempts=[]
+def temporary_failure(url,headers,data=None):
+    attempts.append(url)
+    if len(attempts)==1:
+        raise urllib.error.HTTPError(url,502,'Temporary',{},None)
+    return {'ok':True}
+c._request_json=temporary_failure
+c.time.sleep=lambda seconds: None
+assert c.request_json('https://example.test/search',{})=={'ok':True}
+assert len(attempts)==2
+print('Reprise après erreur HTTP 502 vérifiée')
