@@ -22,13 +22,27 @@ def concordant(fields, candidate):
     if not isinstance(candidate, dict) or not candidate.get('release_id'):
         return False
     title = str(candidate.get('titre') or '')
-    credit, sep, album = title.partition(' - ')
-    if not sep or album_norm(album) != album_norm(fields.get('Titre', '')):
-        return False
+    # Les crédits classiques peuvent eux-mêmes contenir « - ».
+    parts = title.split(' - ')
     artist = fields.get('Artiste', '').split(' / ')[0]
+    def without_possessive(text):
+        prefix = re.escape(artist) + r"[’']s\s+"
+        return re.sub(r'^' + prefix, '', text, flags=re.I) if artist else text
+    expected = album_norm(without_possessive(fields.get('Titre', '')))
+    splits = [(' - '.join(parts[:i]), ' - '.join(parts[i:])) for i in range(1, len(parts))]
+    matching = [(credit, album) for credit, album in splits
+                if album_norm(without_possessive(album)) == expected]
+    if not matching:
+        return False
+    credit, album = matching[0]
     if norm(artist) not in ('ARTISTESVARIES', 'AUDIOFIDELITY', 'VARIOUS', ''):
         if norm(artist) not in norm(credit):
-            return False
+            # Prénom omis : accepter seulement plusieurs personnes toutes créditées.
+            people = fields.get('Artiste', '').split(' / ')
+            surnames = [norm(person.split()[-1]) for person in people if person.split()]
+            credit_words = set(re.findall(r'[A-Z0-9]+', unicodedata.normalize('NFKD', credit).encode('ascii', 'ignore').decode().upper()))
+            if len(surnames) < 2 or not all(name in credit_words for name in surnames):
+                return False
     cat = fields.get('N° catalogue')
     return not cat or norm(candidate.get('catno', '')) == norm(cat)
 
