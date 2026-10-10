@@ -38,32 +38,14 @@ def unique_candidate(f):
     artist = f.get("Artiste", "")
     if not cat or not title:
         return None
-    norm = lambda s: re.sub(r"[^A-Z0-9]", "", str(s).upper())
+    from qualifier_vinyles import concordant
     try:
         candidates = json.loads(f.get("Candidats Discogs") or "[]")
     except (ValueError, TypeError):
         return None
     if not isinstance(candidates, list):
         return None
-    matches = []
-    for x in candidates:
-        if not isinstance(x, dict) or not x.get("release_id"):
-            continue
-        if norm(x.get("catno")) != norm(cat):
-            continue
-        candidate_title = str(x.get("titre") or "")
-        # Discogs search titles normally have "Artist - Album" format.
-        album = candidate_title.split(" - ", 1)[-1]
-        if norm(album) != norm(title):
-            continue
-        # Generic compilation/various-artist credits cannot identify a pressing.
-        # Exact catalogue + album title must still be unique.
-        if artist and norm(artist) not in ("ARTISTESVARIES", "VARIOUS", "NOARTIST"):
-            credited = candidate_title.split(" - ", 1)[0]
-            short_artist = re.sub(r"\s*\([^)]*\)", "", artist)
-            if not (norm(short_artist) in norm(credited) or norm(credited) in norm(short_artist)):
-                continue
-        matches.append(x)
+    matches = [x for x in candidates if concordant(f, x)]
     return matches[0] if len(matches) == 1 else None
 
 
@@ -78,7 +60,7 @@ def main():
     ambiguous = 0
     errors = 0
     while True:
-        params = {"pageSize": 100, "filterByFormula": "AND(NOT({Front Cover}),NOT({Images verrouillées}))"}
+        params = {"pageSize": 100, "filterByFormula": "AND(OR(NOT({Front Cover}),NOT({Back Cover})),NOT({Images verrouillées}))"}
         if cursor:
             params["offset"] = cursor
         page = get(API + "?" + urllib.parse.urlencode(params), at)
@@ -87,7 +69,7 @@ def main():
                 break
             scanned += 1
             f = row.get("fields", {})
-            if f.get("Front Cover") or f.get("Images verrouillées") or f.get("Ne pas retraiter"):
+            if (f.get("Front Cover") and f.get("Back Cover")) or f.get("Images verrouillées") or f.get("Ne pas retraiter"):
                 continue
             release_id = str(f.get("Discogs release_id", "")).strip()
             candidate = None
@@ -124,7 +106,9 @@ def main():
                     print(f"SIMULATION: {release_id} -> {image}")
                 else:
                     proxy = "https://images.weserv.nl/?url=" + urllib.parse.quote(image, safe="") + "&output=jpg"
-                    fields = {"Front Cover": [{"url": proxy}]}
+                    fields = {}
+                    if not f.get("Front Cover"):
+                        fields["Front Cover"] = [{"url": proxy}]
                     if secondary and not f.get("Back Cover"):
                         fields["Back Cover"] = [{"url": "https://images.weserv.nl/?url=" + urllib.parse.quote(secondary, safe="") + "&output=jpg"}]
                     fields["Images Discogs — URLs sources"] = "\n".join(f"{i.get('type', 'secondary')}: {i.get('uri')}" for i in images if i.get("uri"))
@@ -132,6 +116,12 @@ def main():
                         fields["Diagnostic"] = "Pochette Discogs indicative : artiste, titre, format et catalogue concordants; pressage physique non confirmé."
                     patch(f"{API}/{row['id']}", at, fields)
                     fresh = get(f"{API}/{row['id']}", at)
+                    for attempt in range(12):
+                        required = [key for key in ("Front Cover", "Back Cover") if key in fields]
+                        if all(any(a.get("size") for a in fresh.get("fields", {}).get(key, [])) for key in required):
+                            break
+                        time.sleep(5)
+                        fresh = get(f"{API}/{row['id']}", at)
                     if not any(a.get("size") for a in fresh.get("fields", {}).get("Front Cover", [])):
                         raise ValueError("La pièce jointe n'est pas confirmée dans Airtable")
                     if "Back Cover" in fields and not any(a.get("size") for a in fresh.get("fields", {}).get("Back Cover", [])):
