@@ -11,12 +11,19 @@ from enrichir_vinyles import request_json, API, BASE, TABLE
 def norm(text):
     return re.sub(r'[^A-Z0-9]', '', unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode().upper())
 
+def album_norm(text):
+    # Descripteurs typographiques du recto, pas variantes de catalogue.
+    text = str(text).split(' — ')[0].split(' (')[0]
+    text = re.sub(r'\bStereophonic\b', '', text, flags=re.I)
+    text = re.sub(r'\bVolumes?\b', 'Vol', text, flags=re.I)
+    return norm(text)
+
 def concordant(fields, candidate):
     if not isinstance(candidate, dict) or not candidate.get('release_id'):
         return False
     title = str(candidate.get('titre') or '')
     credit, sep, album = title.partition(' - ')
-    if not sep or norm(album) != norm(fields.get('Titre', '').split(' — ')[0]):
+    if not sep or album_norm(album) != album_norm(fields.get('Titre', '')):
         return False
     artist = fields.get('Artiste', '').split(' / ')[0]
     if norm(artist) not in ('ARTISTESVARIES', 'AUDIOFIDELITY', 'VARIOUS', ''):
