@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ajouter seulement des pochettes Discogs dont le pressage est déjà confirmé.
+"""Ajouter des pochettes Discogs identifiées de manière conservatrice, tous bacs.
 
 Chaque exemplaire reste distinct. Ne déduit JAMAIS un release_id d'une liste
 de candidats : les pressages ambigus restent sans pochette.
@@ -61,14 +61,14 @@ def main():
     updated = 0
     ambiguous = 0
     while scanned < BATCH:
-        params = {"pageSize": min(100, BATCH - scanned), "filterByFormula": "{Bac}='B-08'"}
+        params = {"pageSize": min(100, BATCH - scanned), "filterByFormula": "AND(NOT({Front Cover}),NOT({Images verrouillées}))"}
         if cursor:
             params["offset"] = cursor
         page = get(API + "?" + urllib.parse.urlencode(params), at)
         for row in page.get("records", []):
             scanned += 1
             f = row.get("fields", {})
-            if f.get("Bac") != "B-08" or f.get("Front Cover") or f.get("Images verrouillées"):
+            if f.get("Front Cover") or f.get("Images verrouillées"):
                 continue
             release_id = str(f.get("Discogs release_id", "")).strip()
             candidate = None
