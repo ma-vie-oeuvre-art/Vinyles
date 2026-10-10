@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from enrichir_vinyles import request_json as _request_json, API, BASE, TABLE
 import urllib.error
-from reconnaitre_albums import words, album_title, neural_evidence, supported
+from reconnaitre_albums import words, album_title, neural_evidence, supported, reset_reference
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
@@ -85,7 +85,7 @@ def main_heading(fields, candidates):
                 continue
             heights = []
             for token in tokens:
-                values = [height for w,height in printed if w==token or ((len(token)>=5 or token in {'ONE','TWO','THREE'} and 'VOLUME' in tokens) and near_word(w,token))]
+                values = [height for w,height in printed if w==token or ((len(token)>=5 or len(token)>=3 and len(tokens)>=6 or token in {'ONE','TWO','THREE'} and 'VOLUME' in tokens) and near_word(w,token))]
                 if not values:
                     break
                 heights.append(max(values))
@@ -127,7 +127,17 @@ def printed_number_matches(fields,candidate):
     pattern=r"\b(?:N[°'’O]?|NO|VOL(?:UME)?|NUMBER)\s*(\d{1,2})\b"
     printed=set(re.findall(pattern,match[1],re.I))
     title_numbers=set(re.findall(pattern,candidate.get('titre','').partition(' - ')[2],re.I))
-    return len(printed)!=1 or not title_numbers or bool(printed & title_numbers)
+    if len(printed)!=1 or not title_numbers:
+        return True
+    if not printed & title_numbers:
+        return False
+    title_words=set(significant_title(candidate.get('titre','').partition(' - ')[2]))
+    title_words={w for w in title_words if len(w)>=4 and not w.isdigit() and w not in {'SERIES','SERIE','VOLUME','NUMBER'}}
+    visible=set(expanded_words(match[1]))
+    return len(title_words)<4 or len(title_words & visible)>=2
+
+def conflicting_reference(fields):
+    return any(marker in fields.get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]']) and not printed_number_matches(fields,{'titre':fields.get('Artiste','')+' - '+fields.get('Titre','')})
 
 def album_key(candidate):
     master = candidate.get('master_id')
@@ -140,7 +150,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v10:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v11:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -192,7 +202,9 @@ def select():
                 candidates = json.loads(f.get('Candidats Discogs') or '[]')
                 known = bool(f.get('Artiste') and f.get('Titre'))
                 canon = canonical_candidate(f) if known else None
-                if known and canon and canonical_marker(canon) not in f.get('Transcription source',''):
+                if known and conflicting_reference(f):
+                    rows.append(row)
+                elif known and canon and canonical_marker(canon) not in f.get('Transcription source',''):
                     rows.append(row)
                 elif (not known or not str(f.get('Discogs référence release_id','')).isdigit()) and should_compare(f):
                     rows.append(row)
@@ -271,6 +283,12 @@ def run():
         f = request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers())['fields']
         if f.get("Preuve d'identification") == 'Validation humaine' or f.get('Ne pas retraiter') or f.get('Discogs release_id'):
             continue
+        if f.get('Artiste') and f.get('Titre') and conflicting_reference(f):
+            updates=reset_reference(f)
+            source=re.sub(r'\n\[(?:Identité visuelle vérifiée|Titre principal vérifié|identite-canonique-v\d+:[^\]]+)\]','',f.get('Transcription source',''))
+            updates.update({'Artiste':None,'Titre':None,'Candidats Discogs':'[]','Transcription source':source,'Diagnostic':'Référence automatique retirée : le texte du volume imprimé contredit le titre proposé. Nouvelle recherche automatique en cours.'})
+            request_json(f'{API}/{BASE}/{TABLE}/'+row['id'],headers(),{'fields':updates})
+            f={key:value for key,value in {**f,**updates}.items() if value is not None}
         if f.get('Artiste') and f.get('Titre') and canonical_candidate(f):
             candidate = canonical_candidate(f)
             if candidate and canonical_marker(candidate) not in f.get('Transcription source',''):

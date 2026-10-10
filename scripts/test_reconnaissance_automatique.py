@@ -60,3 +60,8 @@ c.time.sleep=lambda seconds: None
 assert c.request_json('https://example.test/search',{})=={'ok':True}
 assert len(attempts)==2
 print('Reprise après erreur HTTP 502 vérifiée')
+
+series={'Transcription source':"[OCR neural texte] BRUITS | DE LA TIE N' 3 | SPORTS | CHASSE | GUERRE | SIGNAUX | SONNERIES"}
+assert not c.printed_number_matches(series,{'titre':'Audio-Camera - Bruits De La Nature N° 3 : Animaux Sauvages - Animaux Domestiques'})
+assert c.printed_number_matches(series,{'titre':'Audio-Camera - Bruits De La Vie N° 3 : Sports, Chasse, Guerre, Signaux, Sonneries'})
+print('Titres de séries distinctes vérifiés')
