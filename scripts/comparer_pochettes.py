@@ -134,7 +134,9 @@ def canonical_fields(candidate):
     if str(release.get('id')) != rid or not release.get('title') or not release.get('artists'):
         raise ValueError('Référence structurée invalide')
     artist = release.get('artists_sort') or ', '.join(a['name'] for a in release['artists'])
-    return {'Artiste': artist, 'Titre': release['title'], 'Discogs référence release_id':rid, 'Discogs référence album':'https://www.discogs.com/release/'+rid}
+    labels = release.get('labels') or []
+    canonical_candidate = {'release_id':int(rid),'master_id':release.get('master_id'),'titre':artist+' - '+release['title'],'catno':labels[0].get('catno') if labels else None,'label':[label.get('name') for label in labels],'pays':release.get('country'),'annee':release.get('year'),'reference_illustrative':True}
+    return {'Artiste': artist, 'Titre': release['title'], 'Discogs référence release_id':rid, 'Discogs référence album':'https://www.discogs.com/release/'+rid, '_canonical_candidate':canonical_candidate}
 
 def headers():
     return {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
@@ -238,6 +240,9 @@ def run():
             candidate = canonical_candidate(f)
             if candidate and canonical_marker(candidate) not in f.get('Transcription source',''):
                 updates = canonical_fields(candidate)
+                item = updates.pop('_canonical_candidate')
+                prior = json.loads(f.get('Candidats Discogs') or '[]')
+                updates['Candidats Discogs'] = json.dumps([item] + [entry for entry in prior if str(entry.get('release_id')) != str(item['release_id'])],ensure_ascii=False)
                 updates['Transcription source'] = f.get('Transcription source','') + '\n' + canonical_marker(candidate)
                 request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': updates})
                 print(f"{row['id']}: artiste et titre vérifiés dans les champs structurés", flush=True)
@@ -372,6 +377,8 @@ def run():
                 resolved.append(candidate)
             matches = resolved
             canonical = canonical_fields(matches[0])
+            item = canonical.pop('_canonical_candidate')
+            matches = [item] + [entry for entry in matches if str(entry.get('release_id')) != str(item['release_id'])]
             updates.update(canonical)
             artist, title = canonical['Artiste'], canonical['Titre']
             updates.update({'Transcription source': f.get('Transcription source', '') + ('\n[Identité visuelle vérifiée]' if scores[0][0] else '\n[Titre principal vérifié]') + '\n' + canonical_marker(matches[0]), 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
