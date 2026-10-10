@@ -1,5 +1,12 @@
 name: Publication incrémentale Vinyles
 on:
+  workflow_run:
+    workflows: ['Enrichissement différé des vinyles']
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths: ['scripts/publier_vinyles.py', '.github/workflows/publier-vinyles.yml']
   workflow_dispatch:
   schedule:
     - cron: '42 * * * *'
@@ -10,6 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publication:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

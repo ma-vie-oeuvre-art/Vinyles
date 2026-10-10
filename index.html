@@ -650,6 +650,7 @@ function rendre(){
       '<span class="adresse">'+r.b+' · '+r.o+' / '+totalBac[r.b]+'</span></div>'+
       '<div class="legende"><p class="t">'+esc(r.t)+'</p><p class="a">'+esc(r.a)+'</p>'+
       '<p class="k">'+esc(r.k)+'</p>'+
+      (r.s?'<p class="k">'+esc(r.s)+'</p>':'')+
       (r.h!=null&&r.w!=null&&r.h<r.w?'<p class="rare">recherché</p>':'')+
       (r.m?'<p class="v">'+arg(r.m)+' <span class="g">VG+</span>'+
             (r.x?' <span class="g">· '+arg(r.x)+' Mint</span>':'')+'</p>'
@@ -897,13 +898,17 @@ function ouvrir(i){
     window.scrollTo({top:0,behavior:'smooth'}); };
   zFa.appendChild(bArt);
   const d=[['Label et n°', r.k||'—'],['Famille',r.f]];
+  if(r.s) d.push(['Identification',r.s]);
+  if(r.diag) d.push(['À vérifier',r.diag]);
   if(r.y) d.push(['Année',r.y]);
   if(r.r) d.push(['Réputation',r.r]);
   document.getElementById('fd').innerHTML=d.map(([k,v])=>'<dt>'+k+'</dt><dd>'+esc(''+v)+'</dd>').join('');
   const lien=document.getElementById('fl');
   lien.style.display = r.d ? '' : 'none';
   if(r.d) lien.href='https://www.discogs.com/release/'+r.d;
-  document.getElementById('fcredit').textContent = r.d
+  document.getElementById('fcredit').textContent = r.photo
+    ? 'Photo originale de cet exemplaire. Identification du pressage en cours.'
+    : r.d
     ? 'Pochette et données de pressage fournies par Discogs.'
     : 'Ce pressage n\'est pas identifié sur Discogs.';
   voile.classList.add('on');

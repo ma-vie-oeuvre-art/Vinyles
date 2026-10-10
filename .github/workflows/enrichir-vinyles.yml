@@ -47,6 +47,11 @@ jobs:
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/enrichir_vinyles.py
+      - name: Qualifier les recherches du bac B-08
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: python scripts/qualifier_vinyles.py
       - name: Récupérer les pochettes confirmées de tous les bacs
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}

@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Fermer l'attente de recherche B-08 sans inventer de pressage confirmé."""
+import json
+import os
+import re
+import time
+import unicodedata
+import urllib.parse
+from enrichir_vinyles import request_json, API, BASE, TABLE
+
+def norm(text):
+    return re.sub(r'[^A-Z0-9]', '', unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode().upper())
+
+def concordant(fields, candidate):
+    if not isinstance(candidate, dict) or not candidate.get('release_id'):
+        return False
+    title = str(candidate.get('titre') or '')
+    credit, sep, album = title.partition(' - ')
+    if not sep or norm(album) != norm(fields.get('Titre', '').split(' — ')[0]):
+        return False
+    artist = fields.get('Artiste', '').split(' / ')[0]
+    if norm(artist) not in ('ARTISTESVARIES', 'AUDIOFIDELITY', 'VARIOUS', ''):
+        if norm(artist) not in norm(credit):
+            return False
+    cat = fields.get('N° catalogue')
+    return not cat or norm(candidate.get('catno', '')) == norm(cat)
+
+def main():
+    at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
+    dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
+    endpoint = f'{API}/{BASE}/{TABLE}'
+    args = {'pageSize': 100, 'filterByFormula': "AND({Bac}='B-08',{Statut}='Dicté')"}
+    page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
+    errors = 0
+    for row in page.get('records', []):
+        f = row.get('fields', {})
+        if f.get('Discogs release_id') or f.get('Ne pas retraiter'):
+            continue
+        try:
+            raw = f.get('Candidats Discogs')
+            candidates = json.loads(raw) if raw else None
+            if candidates is None:
+                continue  # recherche non effectuée, ne pas simuler un résultat
+            if not candidates:
+                title = f.get('Titre', '').split(' — ')[0]
+                artist = f.get('Artiste', '').split(' / ')[0]
+                params = {'type': 'release', 'per_page': 25, 'release_title': title}
+                if norm(artist) not in ('ARTISTESVARIES', 'AUDIOFIDELITY', 'VARIOUS', ''):
+                    params['artist'] = artist
+                search = request_json('https://api.discogs.com/database/search?' + urllib.parse.urlencode(params), dg)
+                candidates = [{'release_id': x.get('id'), 'titre': x.get('title'), 'catno': x.get('catno'), 'label': x.get('label'), 'pays': x.get('country'), 'annee': x.get('year')} for x in search.get('results', [])]
+                time.sleep(2.2)
+            matches = [c for c in candidates if concordant(f, c)]
+            updates = {'Candidats Discogs': json.dumps(candidates, ensure_ascii=False)}
+            if matches:
+                # Un candidat concordant n'est jamais une preuve du pressage physique.
+                updates.update({'Statut': 'Pressage à confirmer', 'Cause': 'Plusieurs pressages plausibles' if len(matches) > 1 else 'Données Discogs insuffisantes', 'Diagnostic': f'{len(matches)} candidat(s) concordant(s) sur {len(candidates)} examinés. Photo originale conservée. Pressage à départager par verso, étiquette ou matrices; aucune valeur attribuée.'})
+            else:
+                updates.update({'Statut': 'À revoir', 'Cause': 'Transcription incertaine' if candidates else 'Aucun résultat Discogs', 'Diagnostic': f'Recherche effectuée : {len(candidates)} candidat(s), aucun concordant avec les données de l’objet. Photo originale conservée; catalogue et transcription à vérifier.'})
+            if not f.get('N° catalogue'):
+                updates['Cause'] = 'Numéro de catalogue absent ou incomplet'
+            if os.getenv('DRY_RUN', '0') != '1':
+                request_json(endpoint + '/' + row['id'], at, {'fields': updates})
+            print(f"{row['id']}: {updates['Statut']}; {len(matches)} concordant(s)")
+        except Exception as exc:
+            errors += 1
+            print(f"{row['id']}: erreur technique {type(exc).__name__}; statut conservé")
+    if errors:
+        raise SystemExit(f'{errors} qualification(s) en échec technique')
+
+if __name__ == '__main__':
+    main()

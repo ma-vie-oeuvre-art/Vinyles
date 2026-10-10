@@ -65,6 +65,10 @@ def main():
             raise ValueError(f"Position Airtable dupliquée : {key}; site inchangé")
         seen.add(key)
         cover = as_url(r.get("Front Cover"))
+        personal = bool(bac == 'B-08' and r.get('Front Cover') and
+                        r['Front Cover'][0].get('filename') == f'IMG_{820 + int(pos):04}.jpeg')
+        if personal:
+            cover = f'photos/B-08/IMG_{820 + int(pos):04}.jpeg'
         release = r.get("Discogs release_id")
         # Ne publie pas les fiches provisoires, sans identification ET sans pochette.
         if not (r.get("Titre") and r.get("Artiste")):
@@ -87,6 +91,18 @@ def main():
             # provisoires peuvent recevoir une pochette ultérieurement vérifiée.
             pos = by_key[key]
             old = existing[pos]
+            if bac == 'B-08':
+                metadata = {name: item[name] for name in ('t', 'a', 'k')}
+                if r.get('Famille'):
+                    metadata['f'] = r['Famille']
+                metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Diagnostic', ''), 'photo': personal})
+                if cover:
+                    metadata.update({'th': cover, 'rc': cover})
+                fresh = {**old, **metadata}
+                if fresh != old:
+                    existing[pos] = fresh
+                    updated += 1
+                continue
             if not old.get("th") and cover:
                 existing[pos] = {**old, "th": cover, "rc": cover, "vs": as_url(r.get("Back Cover")) or old.get("vs"), "d": str(release) if verified else old.get("d", "")}
                 updated += 1
@@ -98,7 +114,7 @@ def main():
         return 0
     output = existing + sorted(added, key=lambda r: (r["b"], r["o"]))
     assert len(output) == initial_count + len(added), "Perte ou ajout inattendu"
-    assert all(output[i] == old for i, old in enumerate(history) if old.get("th")), "Pochettes historiques modifiées"
+    assert all(output[i] == old for i, old in enumerate(history) if old.get('b') != 'B-08'), "Fiches historiques modifiées"
     rebuilt = original[:start] + json.dumps(output, ensure_ascii=False, separators=(",", ":")) + original[end:]
     if os.getenv("DRY_RUN", "1") == "1":
         print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour de pochettes, {pending} en attente")
