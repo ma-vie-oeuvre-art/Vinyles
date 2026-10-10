@@ -60,7 +60,7 @@ def unique_candidate(f):
         # Exact catalogue + album title must still be unique.
         if artist and norm(artist) not in ("ARTISTESVARIES", "VARIOUS", "NOARTIST"):
             credited = candidate_title.split(" - ", 1)[0]
-            short_artist = re.sub(r"\\s*\\([^)]*\\)", "", artist)
+            short_artist = re.sub(r"\s*\([^)]*\)", "", artist)
             if not (norm(short_artist) in norm(credited) or norm(credited) in norm(short_artist)):
                 continue
         matches.append(x)
