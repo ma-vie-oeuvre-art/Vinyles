@@ -18,6 +18,76 @@ from reconnaitre_albums import words, album_title, neural_evidence, supported
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
 
+def near_word(a, b):
+    if a == b:
+        return True
+    if a.isdigit() or b.isdigit() or abs(len(a)-len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) <= 1
+    short, long = sorted((a, b), key=len)
+    return any(short == long[:i] + long[i+1:] for i in range(len(long)))
+
+def expanded_words(text):
+    text = str(text).replace('@', 'O')
+    text = re.sub(r'\bZ[Oo0]{2}1', '2001', text, flags=re.I)
+    text = re.sub(r'(?<=\d)(?=[A-Za-z])|(?<=[A-Za-z])(?=\d)', ' ', text)
+    result = words(text)
+    for token in list(result):
+        if token.startswith('A') and len(token) > 5:
+            result.append(token[1:])
+        if token.startswith('THE') and len(token) > 7:
+            tail = token[3:]
+            result.append(tail[:-2] if tail.endswith('OF') else tail)
+    return result
+
+def significant_title(title):
+    names = {'1':'ONE','I':'ONE','2':'TWO','II':'TWO','3':'THREE','III':'THREE'}
+    text = ' '.join(expanded_words(album_title(title)))
+    text = re.sub(r'\bVOL(?:UME)?\s+(1|2|3|I|II|III)\b', lambda m: 'VOLUME ' + names[m[1]], text)
+    return tuple(w for w in words(text) if (len(w) >= 3 or w.isdigit()) and w not in {'THE','AND','WITH','FROM'})
+
+def main_heading(fields, candidates):
+    """Require every title word, a prominent artist, and one dominant heading."""
+    source = fields.get('Transcription source', '')
+    match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
+    if not match:
+        return None
+    regions = json.loads(match[1])
+    regions = [r for r in regions if r.get('confidence', 0) >= .35]
+    if not regions:
+        return None
+    maximum = max(r['height'] for r in regions)
+    printed = [(w, r['height']) for r in regions for w in expanded_words(r['text'])]
+    groups = {}
+    generic = {'VOLUME','SONGS','STEREO','MONO','HITS','LATEST','GREATEST','ORIGINAL','RECORDS','SOUNDTRACK','FIDELITY'}
+    for candidate in candidates:
+        credit, sep, title = candidate.get('titre', '').rpartition(' - ')
+        tokens = significant_title(title)
+        if not sep or len(tokens) < 2 or tuple(words(re.sub(r'\s*\(\d+\)\s*$', '', credit))) == tuple(words(album_title(title))):
+            continue
+        heights = []
+        for token in tokens:
+            values = [height for w, height in printed if w == token or ((len(token) >= 5 or token in {'ONE','TWO','THREE'} and 'VOLUME' in tokens) and near_word(w, token))]
+            if not values:
+                break
+            heights.append(max(values))
+        if len(heights) != len(tokens) or sum(height >= maximum*.35 for height in heights) < 2:
+            continue
+        artist_height = max((height for w, height in printed if w in words(credit) and len(w) >= 4), default=0)
+        anonymous_specific = len(tokens) >= 4 and any(w.isdigit() and len(w)==4 for w in tokens) and sum(len(w)>=5 and w not in generic for w in tokens)>=2
+        if not anonymous_specific and (artist_height < maximum*.65 or not supported(source, credit, title)):
+            continue
+        score = sum(heights)/len(heights)
+        if score < maximum*.45:
+            continue
+        if tokens not in groups or score > groups[tokens][0]:
+            groups[tokens] = (score, candidate)
+    ordered = sorted(groups.values(), key=lambda item: item[0], reverse=True)
+    if not ordered or (len(ordered)>1 and ordered[0][0] < ordered[1][0]*1.25):
+        return None
+    return ordered[0][1]
+
 def album_key(candidate):
     master = candidate.get('master_id')
     if str(master).isdigit() and int(master) > 0:
@@ -29,7 +99,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v3:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v4:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -178,6 +248,7 @@ def run():
                 score = compare(photo, reference, supported(f.get('Transcription source', ''), credit, title))
                 if score:
                     scores.append((score, c))
+        master_candidates = []
         if not scores:
             # A release search can be monopolized by variants of popular albums.
             # Search masters as well: one entry per album exposes rarer artists.
@@ -200,6 +271,20 @@ def run():
             visible = set(words(source + ' ' + variants))
             def priority(item):
                 return sum(w in visible or any(len(v) >= 6 and w.startswith(v) for v in visible) for w in set(words(item['titre'])) if len(w) >= 4)
+            # OCR can fuse a film/year with its words and misread a short volume.
+            # Search literal numeric variants; only the printed heading can validate.
+            years = [w for w in expanded_words(variants) if w.isdigit() and len(w)==4 and 1900 <= int(w) <= 2100]
+            volume_words = expanded_words(variants)
+            if years and any(near_word(w, 'VOLUME') for w in volume_words):
+                for number, name in [('1','ONE'),('2','TWO'),('3','THREE')]:
+                    if not any(near_word(w, name) for w in volume_words):
+                        continue
+                    for hint in [years[0]+' VOLUME '+name, years[0]+' '+number]:
+                        result = request_json('https://api.discogs.com/database/search?' + urllib.parse.urlencode({'q':hint,'type':'release','format':'Vinyl','per_page':100}), dg)
+                        time.sleep(1.2)
+                        for item in result.get('results', []):
+                            if item.get('cover_image') and ' - ' in item.get('title', ''):
+                                masters['release:'+str(item['id'])] = {'release_id':item['id'],'master_id':item.get('master_id'),'titre':item['title'],'cover_url':item['cover_image']}
             master_candidates = sorted(masters.values(), key=priority, reverse=True)[:100]
             master_candidates = [c for c in master_candidates if c['cover_url'] not in urls]
             with ThreadPoolExecutor(max_workers=4) as pool:
@@ -212,6 +297,10 @@ def run():
                     if score:
                         scores.append((score, c))
             print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
+        if not scores:
+            heading = main_heading(f, candidates + master_candidates)
+            if heading:
+                scores = [(0, heading)]
         scores.sort(key=lambda item: item[0], reverse=True)
         groups = {}
         for score, c in scores:
@@ -234,9 +323,9 @@ def run():
                     candidate = {**candidate, 'release_id': master['main_release']}
                 resolved.append(candidate)
             matches = resolved
-            updates.update({'Transcription source': f.get('Transcription source', '') if '[Identité visuelle vérifiée]' in f.get('Transcription source', '') else f.get('Transcription source', '') + '\n[Identité visuelle vérifiée]', 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
-                'Diagnostic': f'Album reconnu automatiquement par correspondances géométriques des pochettes ({scores[0][0]} points concordants); pressage précis non attribué.'})
-            print(f"{row['id']}: album reconnu par image ({scores[0][0]} points)", flush=True)
+            updates.update({'Transcription source': f.get('Transcription source', '') + ('\n[Identité visuelle vérifiée]' if scores[0][0] else '\n[Titre principal vérifié]'), 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
+                'Diagnostic': (f'Album reconnu automatiquement par correspondances géométriques des pochettes ({scores[0][0]} points concordants); pressage précis non attribué.' if scores[0][0] else 'Album reconnu automatiquement par le titre principal imprimé et son artiste ou son volume; référence Discogs concordante, pressage précis non attribué.')})
+            print(f"{row['id']}: album reconnu " + (f"par image ({scores[0][0]} points)" if scores[0][0] else 'par titre principal imprimé'), flush=True)
         elif unavailable:
             errors += 1
             print(f"{row['id']}: {unavailable} pochette(s) inaccessible(s); comparaison à reprendre automatiquement", flush=True)
