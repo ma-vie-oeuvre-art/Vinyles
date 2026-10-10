@@ -55,11 +55,15 @@ def main():
     history = [dict(r) for r in existing]
     rows = fetch_rows(token)
     added, pending, updated = [], 0, 0
+    seen = set()
     for r in rows:
         bac, pos = r.get("Bac"), r.get("Ordre dans le bac")
         if not bac or not isinstance(pos, (int, float)) or int(pos) != pos:
             continue
         key = (bac, int(pos))
+        if key in seen:
+            raise ValueError(f"Position Airtable dupliquée : {key}; site inchangé")
+        seen.add(key)
         cover = as_url(r.get("Front Cover"))
         release = r.get("Discogs release_id")
         # Ne publie pas les fiches provisoires, sans identification ET sans pochette.
@@ -72,8 +76,8 @@ def main():
             "y": str(r["Année"]) if r.get("Année") else "",
             "f": "À classer", "r": "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x),
-            "d": str(release) if verified else "", "th": cover, "rc": as_url(r.get("Back Cover")),
-            "vs": None, "n": None, "v": None, "m": None, "x": None,
+            "d": str(release) if verified else "", "th": cover, "rc": cover,
+            "vs": as_url(r.get("Back Cover")), "n": None, "v": None, "m": None, "x": None,
             "h": None, "w": None, "no": None, "ev": None,
             "fa": [], "fp": "", "pa": r.get("Pays du pressage") or "",
             "dc": "",
@@ -84,7 +88,7 @@ def main():
             pos = by_key[key]
             old = existing[pos]
             if not old.get("th") and cover:
-                existing[pos] = {**old, "th": cover, "rc": as_url(r.get("Back Cover")) or old.get("rc"), "d": str(release) if verified else old.get("d", "")}
+                existing[pos] = {**old, "th": cover, "rc": cover, "vs": as_url(r.get("Back Cover")) or old.get("vs"), "d": str(release) if verified else old.get("d", "")}
                 updated += 1
             continue
         added.append(item)
@@ -105,3 +109,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
