@@ -49,7 +49,7 @@ def scan(url):
             text=True, capture_output=True, timeout=35)
     if p.returncode:
         raise RuntimeError("OCR failed")
-    lines = [re.sub(r"\\s+", " ", x).strip() for x in p.stdout.splitlines()]
+    lines = [re.sub(r"\s+", " ", x).strip() for x in p.stdout.splitlines()]
     return " | ".join(x for x in lines if len(x) >= 3)[:1000]
 
 def main():
