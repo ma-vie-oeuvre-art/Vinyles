@@ -29,7 +29,7 @@ def supported(ocr, credit, title):
     return bool(artist_words) and sum(w in visible for w in artist_words) / len(artist_words) >= 0.65
 
 def recognition_stamp(ocr):
-    return '[recognition-v2:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
+    return '[recognition-v3:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
 
 def should_search(ocr, diagnostic, today):
     if recognition_stamp(ocr) not in diagnostic:
@@ -43,12 +43,12 @@ def catalogues(ocr):
     return list(dict.fromkeys(prefix + digits for prefix, digits in
         re.findall(r'\b([A-Z]{1,4})[ -]*(\d{3,7})\b', ocr.upper()) if prefix in known))[:3]
 
-def collect(result, ocr, albums, candidates, catalogue=None):
+def collect(result, ocr, albums, candidates, catalogue=None, corroborated_catalogue=False):
     for item in result.get('results', []):
         if catalogue and re.sub(r'[^A-Z0-9]', '', str(item.get('catno', '')).upper()) != catalogue:
             continue
         credit, sep, title = str(item.get('title', '')).rpartition(' - ')
-        if not sep or not supported(ocr, credit, title):
+        if not sep or not (corroborated_catalogue or supported(ocr, credit, title)):
             continue
         title = album_title(title)
         master = item.get('master_id')
@@ -156,11 +156,17 @@ def main():
                 cache[url] = request_json(url, dg)
             return cache[url]
         hints = catalogues(ocr)
+        initial_text = ocr.split('[OCR neural v1:')[0]
+        neural_text = source.partition('[OCR neural texte]')[2].split('[OCR neural regions]')[0]
+        corroborated = set(catalogues(initial_text)) & set(catalogues(neural_text))
+        corroborated = {hint for hint in corroborated if len(re.sub(r'[^0-9]', '', hint)) >= 5}
+        catalogue_verified = False
         complete = True
         for hint in hints:
             result = search({'catno': hint, 'type': 'release', 'format': 'Vinyl', 'per_page': 100})
             complete = complete and int(result.get('pagination', {}).get('pages', 1)) <= 1
-            collect(result, ocr, albums, candidates, hint)
+            collect(result, ocr, albums, candidates, hint, hint in corroborated)
+        catalogue_verified = bool(corroborated and complete and len(albums) == 1)
         # Stop only when all exact catalogue results support a single visible album.
         # Ambiguous, partial or unsuccessful catalogue searches keep the full fallback.
         if not (hints and complete and len(albums) == 1):
@@ -178,14 +184,14 @@ def main():
                 albums = strong
                 artist, title = next(iter(strong.values()))
                 candidates = {key: value for key, value in candidates.items() if value['titre'].rpartition(' - ')[0] == artist and album_title(value['titre'].rpartition(' - ')[2]) == title}
-        if checking_title:
+        if checking_title and not catalogue_verified:
             albums = {key: value for key, value in albums.items() if supported(prominent, *value)}
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
         if len(albums) == 1:
             artist, title = next(iter(albums.values()))
             if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))):
                 updates.update(reset_reference(f))
-            updates.update({'Artiste': artist, 'Titre': title, 'Diagnostic': 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin. [Titre vérifié automatiquement]'})
+            updates.update({'Artiste': artist, 'Titre': title, 'Diagnostic': ('Album reconnu par catalogue concordant dans les deux lectures automatiques; aucune édition physique attribuée.' if catalogue_verified else 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin.') + ' [Titre vérifié automatiquement]'})
             print(f'{row["id"]}: album reconnu')
         else:
             updates.update({'Statut': 'À revoir', 'Diagnostic': f'Lecture et recherche automatiques effectuées : {len(albums)} album(s) concordant(s). Photo conservée; identification encore incertaine.'})
