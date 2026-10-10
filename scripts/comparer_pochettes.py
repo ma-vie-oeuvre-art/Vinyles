@@ -30,7 +30,7 @@ def near_word(a, b):
 
 def expanded_words(text):
     text = str(text).replace('@', 'O')
-    text = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', text)
+    text = re.sub(r'\b([A-Z])(?=[A-Z][a-z])', r'\1 ', text)
     text = re.sub(r'\bZ[Oo0]{2}1', '2001', text, flags=re.I)
     text = re.sub(r'(?<=\d)(?=[A-Za-z])|(?<=[A-Za-z])(?=\d)', ' ', text)
     result = words(text)
@@ -304,7 +304,7 @@ def run():
             if region_match:
                 primary_regions = sorted(json.loads(region_match[1]), key=lambda r: r['height'], reverse=True)[:4]
                 primary_text = ' '.join(r['text'] for r in primary_regions)
-                primary_text = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', primary_text)
+                primary_text = re.sub(r'\b([A-Z])(?=[A-Z][a-z])', r'\1 ', primary_text)
                 primary_tokens = [w for w in words(primary_text.replace('@','O')) if len(w)>=3 and w not in {'THE','AND','WITH','STEREO','MONO'}]
                 heading_query = ' '.join(dict.fromkeys(primary_tokens))
             queries = list(dict.fromkeys(([heading_query] if heading_query else []) + queries[:4] + individual[:8]))[:10]
