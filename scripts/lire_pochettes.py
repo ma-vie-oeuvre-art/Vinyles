@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """OCR conservateur des pochettes Airtable : aucune identification automatique."""
-import io
 import json
 import os
 import re
@@ -75,7 +74,7 @@ def main():
                 continue
             recognized += 1
             # Keep prior transcriptions; OCR is a clue, never a verified identification.
-            source = (existing + "\\n" if existing else "") + "[OCR pochette] " + text
+            source = (existing + "\n" if existing else "") + "[OCR pochette] " + text
             source = source[:90000]
             if not DRY_RUN:
                 request_json(API + "/" + row["id"], token, {
