@@ -9,7 +9,7 @@ on:
     paths: ['scripts/publier_vinyles.py', '.github/workflows/publier-vinyles.yml']
   workflow_dispatch:
   schedule:
-    - cron: '42 * * * *'
+    - cron: '*/5 * * * *'
 permissions:
   contents: write
 concurrency:
@@ -17,7 +17,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publication:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,19 +25,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Synchroniser les fiches validées
+      - name: Synchroniser et publier automatiquement
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DRY_RUN: '0'
-        run: python scripts/publier_vinyles.py
-      - name: Publier les modifications réelles
         run: |
-          if git diff --quiet -- index.html; then
-            echo "Aucune nouvelle fiche prête"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git commit -m "Publier les nouveaux vinyles validés depuis Airtable"
-          git push
+          for tentative in 1 2 3 4; do
+            git fetch origin main
+            git reset --hard origin/main
+            python scripts/publier_vinyles.py
+            if git diff --quiet -- index.html; then
+              echo "Catalogue déjà synchronisé"
+              exit 0
+            fi
+            git add index.html
+            git commit -m "Synchroniser automatiquement le catalogue Airtable"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Un nouveau lot est arrivé : recalcul depuis la dernière version"
+          done
+          echo "Publication reportée au prochain passage automatique"
+          exit 1
