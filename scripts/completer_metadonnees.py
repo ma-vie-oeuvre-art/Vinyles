@@ -11,13 +11,106 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import urllib.parse
 from collections import Counter
-from enrichir_vinyles import request_json, BASE, TABLE, API
+from enrichir_vinyles import request_json as _request_json, BASE, TABLE, API
 from recuperer_pochettes_confirmees import album_reference, candidate_reference
 
-VERSION = 'metadata-v1'
+VERSION = 'metadata-v2'
 REF = 'Discogs référence album'
 RID = 'Discogs référence release_id'
 REPORT = 'Enrichissement automatique'
+_last_discogs_call = 0.0
+
+def request_json(url, headers, data=None):
+    global _last_discogs_call
+    for attempt in range(4):
+        if url.startswith('https://api.discogs.com/'):
+            time.sleep(max(0, 1.2 - (time.monotonic() - _last_discogs_call)))
+            _last_discogs_call = time.monotonic()
+        try:
+            return _request_json(url, headers, data)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (429,500,502,503,504) or attempt == 3: raise
+            time.sleep(min(30, int(exc.headers.get('Retry-After', '0')) or 2 ** (attempt+1)))
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 3: raise
+            time.sleep(2 ** (attempt+1))
+
+def cad_price(price, cache):
+    if not isinstance(price,dict) or price.get('value') is None: return None, ''
+    currency=price.get('currency'); value=float(price['value'])
+    if not currency: raise ValueError('Devise Discogs absente')
+    if currency=='CAD': return round(value,2), 'CAD'
+    series='FX'+currency+'CAD'
+    if series not in cache:
+        data=request_json(f'https://www.bankofcanada.ca/valet/observations/{series}/json?recent=1',{})
+        obs=data.get('observations') or []
+        if not obs or not obs[-1].get(series,{}).get('v'): raise ValueError('Taux de change absent')
+        cache[series]=(float(obs[-1][series]['v']),obs[-1]['d'])
+    rate,date=cache[series]
+    return round(value*rate,2), f'{currency} → CAD : {rate}, Banque du Canada, {date}'
+
+def market_metadata(f, release, headers, cache, confirmed):
+    rid=str(release['id']); out={}; details=[]; errors=[]
+    try:
+        data=request_json(f'https://api.discogs.com/marketplace/stats/{rid}?curr_abbr=CAD',headers)
+        if data.get('num_for_sale') is not None: out['Exemplaires en vente (Discogs)']=data['num_for_sale']
+        price,conversion=cad_price(data.get('lowest_price'),cache)
+        if price is not None: out['Valeur minimale']=price; details.append('prix affiché le plus bas : '+conversion)
+        elif data.get('num_for_sale')==0: details.append('aucune annonce en vente; prix minimal non fourni')
+        else: details.append('prix minimal non fourni par Discogs')
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (403,404): raise
+        errors.append(f'marché : HTTP {exc.code}')
+    try:
+        prices=request_json(f'https://api.discogs.com/marketplace/price_suggestions/{rid}',headers)
+        for field,key in [('Prix suggéré VG+ (Discogs)','Very Good Plus (VG+)'),('Prix suggéré Mint (Discogs)','Mint (M)')]:
+            value,conversion=cad_price(prices.get(key),cache)
+            if value is not None: out[field]=value; details.append(key+' : '+conversion)
+            else: details.append(key+' : suggestion non fournie')
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (403,404): raise
+        errors.append(f'suggestions : HTTP {exc.code}, accès vendeur non disponible pour cette version')
+    out["Source de l'estimation"]='\n'.join([f'https://www.discogs.com/release/{rid}', 'Pressage identifié.' if confirmed else 'INDICATIF : version de référence; le pressage possédé n’est pas confirmé.', 'Montants en CAD. Suggestions de mise en vente, pas des ventes observées.', *details, *errors])
+    if any(k in out for k in ['Valeur minimale','Prix suggéré VG+ (Discogs)','Prix suggéré Mint (Discogs)']): out["Date de l'estimation"]=datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
+    return out
+
+def recording_metadata(release, confirmed):
+    url=f"https://www.discogs.com/release/{release['id']}"
+    scope='Pressage identifié.' if confirmed else 'Version de référence, applicabilité au pressage possédé non confirmée.'
+    notes=str(release.get('notes') or '').strip()
+    descriptions=list(dict.fromkeys(d for f in release.get('formats',[]) for d in f.get('descriptions',[]) if d in {'Mono','Stereo','Quadraphonic','Remastered','Reissue'}))
+    credits=[f"{a.get('role')} : {a.get('name')}" for a in release.get('extraartists',[]) if re.search(r'engineer|mastered|recorded|mixed|lacquer|producer',a.get('role',''),re.I)]
+    passages=[p.strip() for p in re.split(r'\n\s*\n|\n',notes) if re.search(r'record|master|stereo|mono|quad|engineer|studio|live|digital|analog|remaster|78\s*(?:rpm|tour)',p,re.I)]
+    out={}
+    technical=[*descriptions,*credits,*passages]
+    if technical: out["Qualité d'enregistrement (source)"]='\n'.join([url,scope,'Données documentées dans la fiche Discogs; aucune note audiophile déduite.',*technical])[:90000]
+    historical=[p.strip() for p in re.split(r'\n\s*\n|\n',notes) if p.strip()]
+    if historical: out['Informations historiques']='\n'.join([url,scope,'Notes de la version Discogs :',*historical])[:90000]
+    return out
+
+def physical_hints(f, release):
+    """Lire les identifiants sur l'OCR personnel, jamais les copier d'une référence."""
+    out={}
+    raw=f.get('Transcription source','')
+    ocr=raw.split('[OCR pochette]',1)[1] if '[OCR pochette]' in raw else ''
+    def visible(value):
+        chars=re.sub(r'[^A-Z0-9]','',unicodedata.normalize('NFD',str(value).upper()))
+        if len(chars)<4: return False
+        pattern=r'\b'+r'[\W_]*'.join(re.escape(c) for c in chars)+r'\b'
+        text=''.join(c for c in unicodedata.normalize('NFD',ocr.upper()) if unicodedata.category(c)!='Mn')
+        return bool(re.search(pattern,text))
+    cats={x.get('catno') for x in release.get('labels',[]) if x.get('catno') and re.search(r'\d',x['catno']) and visible(x['catno'])}
+    labels={x.get('name') for x in release.get('labels',[]) if x.get('name') and visible(x['name'])}
+    if not f.get('N° catalogue') and len(cats)==1: out['N° catalogue']=next(iter(cats))
+    if not f.get('Label') and len(labels)==1: out['Label']=next(iter(labels))
+    cat=f.get('N° catalogue') or out.get('N° catalogue')
+    from qualifier_vinyles import norm
+    matched=cat and any(norm(x.get('catno'))==norm(cat) for x in release.get('labels',[]))
+    fmt=physical_format(release)
+    if matched and fmt and not f.get('Format physique'): out['Format physique']=fmt
+    if cat and not f.get("Preuve d'identification"):
+        out["Preuve d'identification"]='Catalogue + label' if f.get('Label') or out.get('Label') else 'Catalogue seul'
+    return out
 
 def normalize_title(title):
     title = re.sub(r'(?:\s*[\[(][^\])]*[\])])+\s*$', '', str(title))
@@ -143,10 +236,18 @@ def metadata(f, release, headers, cache):
         if fmt and not f.get('Format physique'): out['Format physique'] = fmt
         year = f.get('Année') or release.get('year')
         if year and 1940 <= int(year) < 2030 and not f.get('Décennie du pressage'): out['Décennie du pressage'] = str(int(year)//10*10)
-        community = release.get('community', {})
-        for field, value in [('Possédé par (Discogs)',community.get('have')),('Recherché par (Discogs)',community.get('want')),('Note Discogs (sur 5)',community.get('rating',{}).get('average')),('Nombre de notes (Discogs)',community.get('rating',{}).get('count')),('Exemplaires en vente (Discogs)',release.get('num_for_sale'))]:
-            if f.get(field) is None and value is not None: out[field] = value
-    out[REPORT] = f'{VERSION} : album renseigné depuis r{rid}. ' + ('Pressage identifié.' if confirmed else 'Référence d’album uniquement; pressage et prix spécifiques à confirmer plus tard.') + ' Les images secondaires Discogs ne garantissent pas un verso; les informations personnelles et la réputation sonore exigent leurs propres sources.'
+    community = release.get('community', {})
+    for field, value in [('Possédé par (Discogs)',community.get('have')),('Recherché par (Discogs)',community.get('want')),('Note Discogs (sur 5)',community.get('rating',{}).get('average')),('Nombre de notes (Discogs)',community.get('rating',{}).get('count')),('Exemplaires en vente (Discogs)',release.get('num_for_sale'))]:
+        if value is not None: out[field] = value
+    out.update(physical_hints(f,release))
+    details=[f"https://www.discogs.com/release/{rid}", 'Référence uniquement.' if not confirmed else 'Pressage identifié.', 'Label : '+', '.join(x.get('name','') for x in release.get('labels',[])), 'Catalogue : '+', '.join(x.get('catno','') for x in release.get('labels',[])), 'Pays : '+str(release.get('country') or 'non documenté'), 'Année de cette version : '+str(release.get('year') or 'non documentée'), 'Format : '+str(physical_format(release) or 'non documenté')]
+    out['Version de référence — détails']='\n'.join(details)
+    for field,value in recording_metadata(release,confirmed).items():
+        if not f.get(field): out[field]=value
+    # Ne pas refaire les prix historiques déjà présents : priorité aux lacunes.
+    if not f.get("Date de l'estimation") or f.get('Bac')=='B-08' or any(f.get(k) is None for k in ['Valeur minimale','Prix suggéré VG+ (Discogs)','Prix suggéré Mint (Discogs)']):
+        out.update(market_metadata(f,release,headers,cache,confirmed))
+    out[REPORT] = f'{VERSION} : album renseigné depuis r{rid}. ' + ('Pressage identifié.' if confirmed else f'Référence indicative : statistiques, prix et notes décrivent r{rid}; le pressage possédé reste à confirmer.') + ' Les images secondaires Discogs ne garantissent pas un verso; les informations personnelles et la réputation sonore exigent leurs propres sources.'
     return out
 
 def main():
@@ -185,4 +286,3 @@ def main():
     if errors:raise SystemExit(1)
 
 if __name__=='__main__':main()
-

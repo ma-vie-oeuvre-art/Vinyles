@@ -25,7 +25,7 @@ def request_json(url, token, fields=None):
 def records(token):
     offset = None
     while True:
-        args = {"pageSize": 100, "filterByFormula": "{Statut}='Dicté'"}
+        args = {"pageSize": 100, "filterByFormula": "OR({Statut}='Dicté',AND({Photos personnelles},NOT({Discogs release_id})))"}
         if offset:
             args["offset"] = offset
         page = request_json(API + "?" + urllib.parse.urlencode(args), token)
@@ -64,7 +64,7 @@ def main():
     for row in records(token):
         f = row.get("fields", {})
         image = f.get("Photos personnelles") or f.get("Front Cover") or []
-        source_match = re.search(r"fichier source: ([^\\n]+)", f.get("Transcription source", ""))
+        source_match = re.search(r"fichier source: ([^\n]+)", f.get("Transcription source", ""))
         root = Path(__file__).resolve().parents[1]
         local = (root / source_match.group(1)).resolve() if source_match else None
         if local and (root not in local.parents or not local.is_file()):
