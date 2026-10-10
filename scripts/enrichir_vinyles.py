@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Traitement différé non destructif des fiches Airtable au statut Dicté."""
 import json
+import re
 import os
 import sys
 import time
@@ -77,18 +78,26 @@ def main():
             print(f"{row['id']}: données insuffisantes; inchangé")
             continue
         params = {"type": "release", "per_page": 8}
-        if catno:
+        if catno and re.search(r"[A-Za-z]", catno):
             params["catno"] = catno
             if label:
                 params["label"] = label
         elif artist and title:
             params.update({"artist": artist, "release_title": title})
         else:
+            # Un numero purement numerique ne suffit jamais pour identifier un pressage.
+            if catno and catno.isdigit():
+                print(f"{row['id']}: numero numerique sans artiste/titre; validation requise")
+                continue
             params["q"] = key
         url = "https://api.discogs.com/database/search?" + urllib.parse.urlencode(params)
         try:
             response = request_json(url, discogs_headers)
             results = response.get("results", [])
+            # Recherche par numero: eliminer les correspondances de simple prefixe.
+            if "catno" in params:
+                norm = lambda x: re.sub(r"[^A-Z0-9]", "", str(x).upper())
+                results = [x for x in results if norm(x.get("catno", "")) == norm(catno)]
             # Candidates are suggestions, not verified pressage identifications.
             candidates = [{"release_id": x.get("id"), "titre": x.get("title"),
                            "label": x.get("label"), "catno": x.get("catno"),
