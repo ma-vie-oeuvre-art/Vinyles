@@ -30,3 +30,7 @@ assert fields['Titre']=='Series - Volume Two'
 assert 'Discogs release_id' not in fields
 assert fields['Discogs référence release_id']=='99'
 print('Regression checks passed: main heading, artist ambiguity, volume, OCR separation, structured identity and deferred pressing.')
+
+compound={'titre':'Given Surname - Long Main Title - Secondary Songs','release_id':10}
+assert c.main_heading(source([region('SURNAME',100),region('Long Main Title',70),region('Secondary Songs',32)]),[compound])==compound
+print('Compound title and smaller subtitle verified.')

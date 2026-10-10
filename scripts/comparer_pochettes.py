@@ -49,13 +49,12 @@ def significant_title(title):
     return tuple(w for w in words(text) if (len(w) >= 3 or w.isdigit()) and w not in {'THE','AND','WITH','FROM'})
 
 def main_heading(fields, candidates):
-    """Require every title word, a prominent artist, and one dominant heading."""
+    """Require every printed title word and a dominant main heading."""
     source = fields.get('Transcription source', '')
     match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
     if not match:
         return None
-    regions = json.loads(match[1])
-    regions = [r for r in regions if r.get('confidence', 0) >= .35]
+    regions = [r for r in json.loads(match[1]) if r.get('confidence', 0) >= .35]
     if not regions:
         return None
     maximum = max(r['height'] for r in regions)
@@ -63,34 +62,44 @@ def main_heading(fields, candidates):
     groups = {}
     generic = {'VOLUME','SONGS','STEREO','MONO','HITS','LATEST','GREATEST','ORIGINAL','RECORDS','SOUNDTRACK','FIDELITY'}
     for candidate in candidates:
-        credit, sep, title = candidate.get('titre', '').rpartition(' - ')
-        tokens = significant_title(title)
-        if not sep or len(tokens) < 2 or tuple(words(re.sub(r'\s*\(\d+\)\s*$', '', credit))) == tuple(words(album_title(title))):
-            continue
-        heights = []
-        for token in tokens:
-            values = [height for w, height in printed if w == token or ((len(token) >= 5 or token in {'ONE','TWO','THREE'} and 'VOLUME' in tokens) and near_word(w, token))]
-            if not values:
-                break
-            heights.append(max(values))
-        if len(heights) != len(tokens) or sum(height >= maximum*.35 for height in heights) < 2:
-            continue
-        artist_terms = [(height,w) for w,height in printed if w in words(credit) and len(w)>=5 and not w.isdigit()]
-        artist_height, primary_name = max(artist_terms, default=(0,''))
-        anonymous_specific = len(tokens) >= 4 and any(w.isdigit() and len(w)==4 for w in tokens) and sum(len(w)>=5 and w not in generic for w in tokens)>=2
-        if not anonymous_specific and artist_height < maximum*.65:
-            continue
-        score = sum(heights)/len(heights)
-        if score < maximum*.45:
-            continue
-        artist_tokens = [w for w in words(credit) if w not in {'THE','AND','WITH','FEAT','FEATURING'}]
-        index = artist_tokens.index(primary_name) if primary_name in artist_tokens else 0
-        identity = ('ANONYMOUS',) if anonymous_specific else tuple(artist_tokens[max(0,index-1):index+1])
-        key = (identity,tokens)
-        if key not in groups or score > groups[key][0]:
-            groups[key] = (score, candidate)
-    ordered = sorted(groups.values(), key=lambda item: item[0], reverse=True)
-    if not ordered or (len(ordered)>1 and ordered[0][0] < ordered[1][0]*1.25):
+        parts = candidate.get('titre','').split(' - ')
+        # Both classical credits and a real title may contain this separator.
+        for split in range(1,len(parts)):
+            credit, title = ' - '.join(parts[:split]), ' - '.join(parts[split:])
+            tokens = significant_title(title)
+            if len(tokens)<2 or tuple(words(re.sub(r'\s*\(\d+\)\s*$', '', credit))) == tuple(words(album_title(title))):
+                continue
+            heights = []
+            for token in tokens:
+                values = [height for w,height in printed if w==token or ((len(token)>=5 or token in {'ONE','TWO','THREE'} and 'VOLUME' in tokens) and near_word(w,token))]
+                if not values:
+                    break
+                heights.append(max(values))
+            if len(heights)!=len(tokens) or sum(height>=maximum*.35 for height in heights)<2:
+                continue
+            artist_terms = [(height,w) for w,height in printed if w in words(credit) and len(w)>=5 and not w.isdigit()]
+            artist_height,primary_name = max(artist_terms,default=(0,''))
+            anonymous_specific = len(tokens)>=4 and any(w.isdigit() and len(w)==4 for w in tokens) and sum(len(w)>=5 and w not in generic for w in tokens)>=2
+            if not anonymous_specific and artist_height<maximum*.65:
+                continue
+            # Small subtitle lettering must not dilute a clear large main title.
+            score = sum(sorted(heights,reverse=True)[:2])/2
+            if score<maximum*.45:
+                continue
+            artist_tokens = [w for w in words(credit) if w not in {'THE','AND','WITH','FEAT','FEATURING'}]
+            index = artist_tokens.index(primary_name) if primary_name in artist_tokens else 0
+            identity = ('ANONYMOUS',) if anonymous_specific else tuple(artist_tokens[max(0,index-1):index+1])
+            key = (identity,tokens)
+            if key not in groups or score>groups[key][0]:
+                groups[key]=(score,candidate)
+    # A matching printed subtitle refines the same artist's shorter title.
+    remove = set()
+    for key in groups:
+        for other in groups:
+            if key!=other and key[0]==other[0] and set(key[1])<set(other[1]) and groups[other][0]>=groups[key][0]*.95:
+                remove.add(key)
+    ordered=sorted((value for key,value in groups.items() if key not in remove),key=lambda item:item[0],reverse=True)
+    if not ordered or (len(ordered)>1 and ordered[0][0]<ordered[1][0]*1.25):
         return None
     return ordered[0][1]
 
@@ -105,7 +114,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v5:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v6:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -124,7 +133,7 @@ def canonical_candidate(fields):
     return next((c for c in candidates if str(c.get('release_id','')).isdigit()), None)
 
 def canonical_marker(candidate):
-    return '[identite-canonique-v1:' + str(candidate['release_id']) + ']'
+    return '[identite-canonique-v2:' + str(candidate['release_id']) + ']'
 
 def canonical_fields(candidate):
     dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent':'VinylesInventaire/1.0 (personal catalog)'}
@@ -133,7 +142,7 @@ def canonical_fields(candidate):
     time.sleep(1.2)
     if str(release.get('id')) != rid or not release.get('title') or not release.get('artists'):
         raise ValueError('Référence structurée invalide')
-    artist = release.get('artists_sort') or ', '.join(a['name'] for a in release['artists'])
+    artist = ', '.join(a['name'] for a in release['artists'])
     labels = release.get('labels') or []
     canonical_candidate = {'release_id':int(rid),'master_id':release.get('master_id'),'titre':artist+' - '+release['title'],'catno':labels[0].get('catno') if labels else None,'label':[label.get('name') for label in labels],'pays':release.get('country'),'annee':release.get('year'),'reference_illustrative':True}
     return {'Artiste': artist, 'Titre': release['title'], 'Discogs référence release_id':rid, 'Discogs référence album':'https://www.discogs.com/release/'+rid, '_canonical_candidate':canonical_candidate}
