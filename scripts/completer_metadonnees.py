@@ -135,9 +135,10 @@ def restore_documented_fields(f):
     history=f.get('Informations historiques','')
     status=re.search(r'^Statut réel\s*:\s*(Identifié|Pressage à confirmer|À revoir|Non trouvé|Dicté)\.',history,re.M)
     if status: out['Statut']=status[1]
-    if re.search(r'^Cause réelle\s*:\s*aucun résultat Discogs',history,re.M|re.I): out['Cause']='Aucun résultat Discogs'
+    if re.search(r'\bCause réelle\s*:\s*aucun résultat Discogs',history,re.I):
+        out.update({'Cause':'Aucun résultat Discogs','Candidats Discogs':'[]'})
     if 'numéro de fascicule, pas un numéro de catalogue' in history:
-        out.update({'N° catalogue':None,'Cause':'Numéro de fascicule, pas de catalogue'})
+        out.update({'N° catalogue':None,'Cause':'Numéro de fascicule, pas de catalogue','Candidats Discogs':'[]'})
     if 'réputation sonore laissée vide' in f.get('Source de la réputation','').lower(): out['Réputation sonore']=None
     source=f.get('Transcription source','')
     identity=re.search(r'Ce disque\s*:\s*([^,\n]+),\s*(.*?)\s*—\s*(.+)',history,re.I)
@@ -160,6 +161,8 @@ def restore_documented_fields(f):
         country=re.search(r'\bMade in (Italy|Canada|France|Germany|England|USA|US)\b',central[1],re.I)
         names={'italy':'Italy','canada':'Canada','france':'France','germany':'Germany','england':'UK','usa':'US','us':'US'}
         if country and not f.get('Pays du pressage'): out['Pays du pressage']=names[country[1].lower()]
+    if 'Cause' in out:
+        out['Diagnostic']='Conclusion validée restaurée : '+str(out.get('Statut') or f.get('Statut') or '')+'. '+out['Cause']+'. Le pressage précis reste distinct de l’enrichissement de l’album.'
     return out
 
 def flatten_tracks(items, work=''):
@@ -337,4 +340,3 @@ def main():
     if errors:raise SystemExit(1)
 
 if __name__=='__main__':main()
-
