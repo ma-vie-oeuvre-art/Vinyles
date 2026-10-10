@@ -1,0 +1,54 @@
+{
+  "images": [
+    {
+      "path": "photos/B-09/IMG_0862.jpeg",
+      "bac": "B-09",
+      "position": 1
+    },
+    {
+      "path": "photos/B-09/IMG_0863.jpeg",
+      "bac": "B-09",
+      "position": 2
+    },
+    {
+      "path": "photos/B-09/IMG_0864.jpeg",
+      "bac": "B-09",
+      "position": 3
+    },
+    {
+      "path": "photos/B-09/IMG_0865.jpeg",
+      "bac": "B-09",
+      "position": 4
+    },
+    {
+      "path": "photos/B-09/IMG_0866.jpeg",
+      "bac": "B-09",
+      "position": 5
+    },
+    {
+      "path": "photos/B-09/IMG_0867.jpeg",
+      "bac": "B-09",
+      "position": 6
+    },
+    {
+      "path": "photos/B-09/IMG_0868.jpeg",
+      "bac": "B-09",
+      "position": 7
+    },
+    {
+      "path": "photos/B-09/IMG_0869.jpeg",
+      "bac": "B-09",
+      "position": 8
+    },
+    {
+      "path": "photos/B-09/IMG_0870.jpeg",
+      "bac": "B-09",
+      "position": 9
+    },
+    {
+      "path": "photos/B-09/IMG_0871.jpeg",
+      "bac": "B-09",
+      "position": 10
+    }
+  ]
+}

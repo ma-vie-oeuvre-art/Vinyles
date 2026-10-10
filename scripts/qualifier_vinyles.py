@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fermer l'attente de recherche B-08 sans inventer de pressage confirmé."""
+"""Qualifier les recherches des pochettes importées, sans inventer de pressage confirmé."""
 import json
 import os
 import re
@@ -50,10 +50,16 @@ def main():
     at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
     dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
     endpoint = f'{API}/{BASE}/{TABLE}'
-    args = {'pageSize': 100, 'filterByFormula': "AND({Bac}='B-08',OR({Statut}='Dicté',{Statut}='À revoir',{Statut}='Pressage à confirmer'))"}
-    page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
+    args = {'pageSize': 100, 'filterByFormula': "AND({Photos personnelles},{Artiste},{Titre},OR({Statut}='Dicté',{Statut}='À revoir',{Statut}='Pressage à confirmer'))"}
+    rows = []
+    while True:
+        page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
+        rows.extend(page.get('records', []))
+        if not page.get('offset'):
+            break
+        args['offset'] = page['offset']
     errors = 0
-    for row in page.get('records', []):
+    for row in rows:
         f = row.get('fields', {})
         if f.get('Discogs release_id') or f.get('Ne pas retraiter'):
             continue
