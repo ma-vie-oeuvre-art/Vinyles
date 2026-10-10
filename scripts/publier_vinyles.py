@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publication incrémentale Airtable -> GitHub Pages. Aucune suppression de fiches existantes."""
+"""Synchronisation Airtable -> GitHub Pages, suppressions comprises pour le bac B-08."""
 import json
 import os
 import sys
@@ -59,6 +59,8 @@ def main():
     for r in rows:
         bac, pos = r.get("Bac"), r.get("Ordre dans le bac")
         if not bac or not isinstance(pos, (int, float)) or int(pos) != pos:
+            if bac == 'B-08':
+                raise ValueError('Position B-08 invalide : synchronisation interrompue')
             continue
         key = (bac, int(pos))
         if key in seen:
@@ -106,18 +108,21 @@ def main():
             continue
         added.append(item)
         by_key[key] = len(existing) + len(added) - 1
-    if not added and not updated:
+    # La lecture paginée complète doit réussir avant toute suppression.
+    # B-08 est le bac synchronisé ; les autres bacs historiques restent conservés.
+    removed = [r for r in existing if r.get('b') == 'B-08' and (r.get('b'), r.get('o')) not in seen]
+    if not added and not updated and not removed:
         print(f"Aucune nouvelle fiche prête. {pending} fiche(s) en attente. Site inchangé.")
         return 0
-    output = existing + sorted(added, key=lambda r: (r["b"], r["o"]))
-    assert len(output) == initial_count + len(added), "Perte ou ajout inattendu"
-    assert all(output[i] == old for i, old in enumerate(history) if old.get('b') != 'B-08'), "Fiches historiques modifiées"
+    output = [r for r in existing if r.get("b") != "B-08" or (r.get("b"), r.get("o")) in seen] + sorted(added, key=lambda r: (r["b"], r["o"]))
+    assert len(output) == initial_count + len(added) - len(removed), "Perte ou ajout inattendu"
+    assert [r for r in output if r.get('b') != 'B-08'] == [r for r in history if r.get('b') != 'B-08'] + [r for r in sorted(added, key=lambda r: (r['b'], r['o'])) if r.get('b') != 'B-08'], "Fiches historiques modifiées"
     rebuilt = original[:start] + json.dumps(output, ensure_ascii=False, separators=(",", ":")) + original[end:]
     if os.getenv("DRY_RUN", "1") == "1":
-        print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour de pochettes, {pending} en attente")
+        print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour, {len(removed)} suppressions B-08, {pending} en attente")
         return 0
     SITE.write_text(rebuilt, encoding="utf-8")
-    print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08. Les autres bacs conservés.")
+    print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08, {len(removed)} suppressions B-08. Les autres bacs conservés.")
     return 0
 
 if __name__ == "__main__":
