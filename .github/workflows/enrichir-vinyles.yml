@@ -1,5 +1,9 @@
 name: Enrichissement différé des vinyles
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/enrichir-vinyles.yml'
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
