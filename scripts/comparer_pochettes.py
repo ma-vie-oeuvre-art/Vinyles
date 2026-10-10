@@ -16,6 +16,13 @@ from reconnaitre_albums import words, album_title
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
 
+def album_key(candidate):
+    master = candidate.get('master_id')
+    if str(master).isdigit() and int(master) > 0:
+        return ('master', int(master))
+    credit, _, title = candidate.get('titre', '').rpartition(' - ')
+    return (tuple(words(credit)), tuple(words(album_title(title))))
+
 def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
@@ -132,7 +139,7 @@ def run():
         urls = set()
         for c in candidates:
             credit, sep, title = c.get('titre', '').rpartition(' - ')
-            key = (tuple(words(credit)), tuple(words(album_title(title))))
+            key = album_key(c)
             url = c.get('cover_url')
             if not sep or not url or url in urls or album_counts.get(key, 0) >= 2:
                 continue
@@ -165,7 +172,7 @@ def run():
         groups = {}
         for score, c in scores:
             credit, _, title = c['titre'].rpartition(' - ')
-            key = (tuple(words(credit)), tuple(words(album_title(title))))
+            key = album_key(c)
             groups.setdefault(key, []).append((score, c))
         updates = {}
         if len(groups) == 1:
