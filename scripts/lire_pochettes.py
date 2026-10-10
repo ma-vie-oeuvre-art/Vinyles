@@ -60,14 +60,14 @@ def scan(url):
         with Image.open(f.name) as original:
             im = ImageOps.exif_transpose(original).convert('RGB')
             w, h = im.size
-            for top, bottom in ((.10, .40), (.30, .65), (.60, .90)):
+            for top, bottom in ((.18, .38), (.30, .65), (.60, .90)):
                 crop = im.crop((0, int(h*top), w, int(h*bottom)))
                 crop = ImageOps.autocontrast(ImageOps.grayscale(crop))
                 crop = crop.resize((w*2, crop.height*2))
                 with tempfile.NamedTemporaryFile(suffix='.png') as zone:
                     crop.save(zone.name)
                     for mode in ('6', '11'):
-                        p = subprocess.run(['tesseract', zone.name, 'stdout', '-l', 'eng+fra', '--psm', mode],
+                        p = subprocess.run(['tesseract', zone.name, 'stdout', '-l', 'eng', '--psm', mode],
                             text=True, capture_output=True, timeout=35)
                         if p.returncode: raise RuntimeError('OCR zone failed')
                         outputs.append(p.stdout)
