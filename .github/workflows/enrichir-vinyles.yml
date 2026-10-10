@@ -72,3 +72,10 @@ jobs:
           DRY_RUN: '0'
         run: python scripts/recuperer_pochettes_confirmees.py
 
+
+      - name: Compléter les champs et recalculer le catalogue
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          DRY_RUN: '0'
+        run: python scripts/completer_metadonnees.py

@@ -81,7 +81,7 @@ def album_reference(f, headers):
     return master_id, release
 
 
-def candidate_reference(f, headers):
+def candidate_reference(f, headers, require_images=True):
     """Pochettes illustratives d'une version concordante, sans identifier l'exemplaire."""
     from qualifier_vinyles import concordant, norm
     try:
@@ -97,7 +97,7 @@ def candidate_reference(f, headers):
         release = get(f"https://api.discogs.com/releases/{item['release_id']}", headers)
         if str(release.get("id")) != str(item["release_id"]):
             raise ValueError("Référence Discogs incohérente")
-        if any(fmt.get("name", "").lower() == "vinyl" for fmt in release.get("formats", [])) and release.get("images"):
+        if any(fmt.get("name", "").lower() == "vinyl" for fmt in release.get("formats", [])) and (release.get("images") or not require_images):
             return f"r{release['id']}", release
         time.sleep(1.2)
     return None
@@ -113,95 +113,99 @@ def main():
     updated = 0
     ambiguous = 0
     errors = 0
+    selected = []
     while True:
         params = {"pageSize": 100, "filterByFormula": "AND(OR(NOT({Front Cover}),NOT({Back Cover})),NOT({Images verrouillées}))"}
         if cursor:
             params["offset"] = cursor
         page = get(API + "?" + urllib.parse.urlencode(params), at)
-        for row in page.get("records", []):
-            if updated >= BATCH:
-                break
-            scanned += 1
-            f = row.get("fields", {})
-            if (f.get("Front Cover") and f.get("Back Cover")) or f.get("Images verrouillées") or f.get("Ne pas retraiter"):
-                continue
-            release_id = str(f.get("Discogs release_id", "")).strip()
-            candidate = None
-            if not release_id.isdecimal():
-                candidate = unique_candidate(f)
-                if candidate:
-                    release_id = str(candidate["release_id"])
-            try:
-                master_id = None
-                if release_id.isdecimal():
-                    release = get(f"https://api.discogs.com/releases/{release_id}", discogs)
-                elif f.get("Bac") == "B-08":
-                    reference = album_reference(f, discogs) or candidate_reference(f, discogs)
-                    if not reference:
-                        ambiguous += 1
-                        print(f"{f.get('Bac')}/{f.get('Ordre dans le bac')}: album sans référence unique; images en attente")
-                        continue
-                    master_id, release = reference
-                    release_id = str(release["id"])
-                else:
-                    ambiguous += 1
-                    continue
-                if str(release.get("id")) != release_id:
-                    raise ValueError("Discogs release_id incohérent")
-                if candidate:
-                    norm = lambda s: re.sub(r"[^A-Z0-9]", "", str(s).upper())
-                    if not any(norm(lbl.get("catno")) == norm(f.get("N° catalogue"))
-                               for lbl in release.get("labels", [])):
-                        raise ValueError("Numéro catalogue non confirmé dans la fiche Discogs")
-                    if not any(fmt.get("name", "").lower() == "vinyl" for fmt in release.get("formats", [])):
-                        raise ValueError("Le support Discogs n'est pas un vinyle")
-                images = release.get("images") or []
-                image = next((i.get("uri") for i in images if i.get("type") == "primary" and i.get("uri")), None)
-                if not image:
-                    image = next((i.get("uri") for i in images if i.get("uri")), None)
-                if not image or not image.startswith("https://"):
-                    print(f"{release_id}: aucune pochette exploitable")
-                    continue
-                # Charger le recto et, si disponible, une premiere image secondaire (verso presume).
-                secondary = next((i.get("uri") for i in images if i.get("type") == "secondary" and i.get("uri") and i.get("uri") != image), None)
-                # Airtable importe le fichier distant dans son champ attachment.
-                if os.getenv("DRY_RUN", "1") == "1":
-                    print(f"SIMULATION: {release_id} -> {image}")
-                else:
-                    proxy = "https://images.weserv.nl/?url=" + urllib.parse.quote(image, safe="") + "&output=jpg"
-                    fields = {}
-                    if not f.get("Front Cover"):
-                        fields["Front Cover"] = [{"url": proxy}]
-                    if secondary and not f.get("Back Cover"):
-                        fields["Back Cover"] = [{"url": "https://images.weserv.nl/?url=" + urllib.parse.quote(secondary, safe="") + "&output=jpg"}]
-                    fields["Images Discogs — URLs sources"] = "\n".join(f"{i.get('type', 'secondary')}: {i.get('uri')}" for i in images if i.get("uri"))
-                    if master_id:
-                        reference_url = f"https://www.discogs.com/release/{release_id}" if str(master_id).startswith("r") else f"https://www.discogs.com/master/{master_id}"
-                        fields["Images Discogs — URLs sources"] = f"Album de référence : {reference_url}; images de la version {release_id}, pressage physique non confirmé.\\n" + fields["Images Discogs — URLs sources"]
-                        fields["Diagnostic"] = f"Pochettes de référence : {reference_url}, version illustrée r{release_id}. Le pressage de cet exemplaire reste à confirmer; aucune valeur attribuée."
-                    elif candidate:
-                        fields["Diagnostic"] = "Pochette Discogs indicative : artiste, titre, format et catalogue concordants; pressage physique non confirmé."
-                    patch(f"{API}/{row['id']}", at, fields)
-                    fresh = get(f"{API}/{row['id']}", at)
-                    for attempt in range(12):
-                        required = [key for key in ("Front Cover", "Back Cover") if key in fields]
-                        if all(any(a.get("size") for a in fresh.get("fields", {}).get(key, [])) for key in required):
-                            break
-                        time.sleep(5)
-                        fresh = get(f"{API}/{row['id']}", at)
-                    if not any(a.get("size") for a in fresh.get("fields", {}).get("Front Cover", [])):
-                        raise ValueError("La pièce jointe n'est pas confirmée dans Airtable")
-                    if "Back Cover" in fields and not any(a.get("size") for a in fresh.get("fields", {}).get("Back Cover", [])):
-                        print(f"{release_id}: verso non confirme; recto confirme")
-                    updated += 1
-                    print(f"IMAGE CONFIRMÉE: {release_id}")
-            except Exception as exc:
-                errors += 1
-                print(f"{release_id}: échec sans nouvelle attribution: {exc}")
-            time.sleep(1.2)
-        cursor = page.get("offset")
-        if not cursor or updated >= BATCH:
+        selected.extend(page.get('records', []))
+        cursor = page.get('offset')
+        if not cursor:
             break
+    for row in selected:
+        if updated >= BATCH:
+            break
+        scanned += 1
+        f = row.get("fields", {})
+        if (f.get("Front Cover") and f.get("Back Cover")) or f.get("Images verrouillées") or f.get("Ne pas retraiter"):
+            continue
+        if f.get('Front Cover') and f.get('Images Discogs — URLs sources') and 'secondary:' not in f['Images Discogs — URLs sources']:
+            continue
+        release_id = str(f.get("Discogs release_id", "")).strip()
+        candidate = None
+        if not release_id.isdecimal():
+            candidate = unique_candidate(f)
+            if candidate:
+                release_id = str(candidate["release_id"])
+        try:
+            master_id = None
+            if release_id.isdecimal():
+                release = get(f"https://api.discogs.com/releases/{release_id}", discogs)
+            elif f.get('Titre') and f.get('Artiste'):
+                reference = album_reference(f, discogs) or candidate_reference(f, discogs)
+                if not reference:
+                    ambiguous += 1
+                    print(f"{f.get('Bac')}/{f.get('Ordre dans le bac')}: album sans référence unique; images en attente")
+                    continue
+                master_id, release = reference
+                release_id = str(release["id"])
+            else:
+                ambiguous += 1
+                continue
+            if str(release.get("id")) != release_id:
+                raise ValueError("Discogs release_id incohérent")
+            if candidate:
+                norm = lambda s: re.sub(r"[^A-Z0-9]", "", str(s).upper())
+                if not any(norm(lbl.get("catno")) == norm(f.get("N° catalogue"))
+                           for lbl in release.get("labels", [])):
+                    raise ValueError("Numéro catalogue non confirmé dans la fiche Discogs")
+                if not any(fmt.get("name", "").lower() == "vinyl" for fmt in release.get("formats", [])):
+                    raise ValueError("Le support Discogs n'est pas un vinyle")
+            images = release.get("images") or []
+            image = next((i.get("uri") for i in images if i.get("type") == "primary" and i.get("uri")), None)
+            if not image:
+                image = next((i.get("uri") for i in images if i.get("uri")), None)
+            if not image or not image.startswith("https://"):
+                print(f"{release_id}: aucune pochette exploitable")
+                continue
+            # Charger le recto et, si disponible, une premiere image secondaire (verso presume).
+            secondary = next((i.get("uri") for i in images if i.get("type") == "secondary" and i.get("uri") and i.get("uri") != image), None)
+            # Airtable importe le fichier distant dans son champ attachment.
+            if os.getenv("DRY_RUN", "1") == "1":
+                print(f"SIMULATION: {release_id} -> {image}")
+            else:
+                proxy = "https://images.weserv.nl/?url=" + urllib.parse.quote(image, safe="") + "&output=jpg"
+                fields = {}
+                if not f.get("Front Cover"):
+                    fields["Front Cover"] = [{"url": proxy}]
+                if secondary and not f.get("Back Cover"):
+                    fields["Back Cover"] = [{"url": "https://images.weserv.nl/?url=" + urllib.parse.quote(secondary, safe="") + "&output=jpg"}]
+                fields["Images Discogs — URLs sources"] = f"Version illustrée : https://www.discogs.com/release/{release_id}\n" + "\n".join(f"{i.get('type', 'secondary')}: {i.get('uri')}" for i in images if i.get("uri"))
+                if master_id:
+                    reference_url = f"https://www.discogs.com/release/{release_id}" if str(master_id).startswith("r") else f"https://www.discogs.com/master/{master_id}"
+                    fields["Images Discogs — URLs sources"] = f"Album de référence : {reference_url}; images de la version {release_id}, pressage physique non confirmé.\n" + fields["Images Discogs — URLs sources"]
+                    fields["Diagnostic"] = f"Pochettes de référence : {reference_url}, version illustrée r{release_id}. Le pressage de cet exemplaire reste à confirmer; aucune valeur attribuée."
+                elif candidate:
+                    fields["Diagnostic"] = "Pochette Discogs indicative : artiste, titre, format et catalogue concordants; pressage physique non confirmé."
+                patch(f"{API}/{row['id']}", at, fields)
+                fresh = get(f"{API}/{row['id']}", at)
+                for attempt in range(12):
+                    required = [key for key in ("Front Cover", "Back Cover") if key in fields]
+                    if all(any(a.get("size") for a in fresh.get("fields", {}).get(key, [])) for key in required):
+                        break
+                    time.sleep(5)
+                    fresh = get(f"{API}/{row['id']}", at)
+                if not any(a.get("size") for a in fresh.get("fields", {}).get("Front Cover", [])):
+                    raise ValueError("La pièce jointe n'est pas confirmée dans Airtable")
+                if "Back Cover" in fields and not any(a.get("size") for a in fresh.get("fields", {}).get("Back Cover", [])):
+                    print(f"{release_id}: verso non confirme; recto confirme")
+                updated += 1
+                print(f"IMAGE CONFIRMÉE: {release_id}")
+        except Exception as exc:
+            errors += 1
+            print(f"{release_id}: échec sans nouvelle attribution: {exc}")
+        time.sleep(1.2)
     print(f"Bilan: {scanned} examinés, {updated} images importées, {ambiguous} pressages sans identification confirmée")
     if errors:
         raise SystemExit(f"ÉCHEC TECHNIQUE : {errors} import(s) de pochette en erreur.")
@@ -211,4 +215,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

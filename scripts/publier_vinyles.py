@@ -2,6 +2,7 @@
 """Synchronisation Airtable -> GitHub Pages, suppressions comprises pour le bac B-08."""
 import json
 import os
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -73,22 +74,35 @@ def main():
                         (r.get('Front Cover') or r.get('Photos personnelles'))[0].get('filename') == f'IMG_{820 + int(pos):04}.jpeg')
         if personal:
             cover = f'photos/B-08/IMG_{820 + int(pos):04}.jpeg'
+        # Les URL de pièces jointes Airtable expirent. Les sources Discogs
+        # permettent au site de conserver une illustration accessible.
+        back = as_url(r.get('Back Cover'))
+        sources = r.get('Images Discogs — URLs sources', '')
+        if bac == 'B-08' and sources:
+            primary = re.search(r'(?:^|\n)primary: (https://\S+)', sources)
+            secondary = re.search(r'(?:^|\n)secondary: (https://\S+)', sources)
+            if primary and r.get('Front Cover'):
+                cover = 'https://images.weserv.nl/?url=' + urllib.parse.quote(primary[1], safe='') + '&output=jpg'
+                personal = False
+            if secondary and back:
+                back = 'https://images.weserv.nl/?url=' + urllib.parse.quote(secondary[1], safe='') + '&output=jpg'
         release = r.get("Discogs release_id")
         # Ne publie pas les fiches provisoires, sans identification ET sans pochette.
         if not (r.get("Titre") and r.get("Artiste")):
             pending += 1
             continue
-        verified = bool(cover and release and str(release).isdigit())
+        verified = bool(release and str(release).isdigit() and r.get("Statut") == "Identifié")
         item = {
             "b": bac, "o": int(pos), "t": r["Titre"], "a": r["Artiste"],
-            "y": str(r["Année"]) if r.get("Année") else "",
-            "f": "À classer", "r": "", "k": " ".join(
+            "y": str((r.get("Année") or "") if verified else r.get("Année de l'album") or ""),
+            "f": r.get("Famille") or "À classer", "r": r.get("Réputation sonore") or "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x),
             "d": str(release) if verified else "", "th": cover, "rc": cover,
-            "vs": as_url(r.get("Back Cover")), "n": None, "v": None, "m": None, "x": None,
-            "h": None, "w": None, "no": None, "ev": None,
-            "fa": [], "fp": "", "pa": r.get("Pays du pressage") or "",
-            "dc": "",
+            "vs": back, "n": r.get("Note Discogs (sur 5)") if verified else None, "v": r.get("Valeur minimale") if verified else None, "m": r.get("Prix suggéré VG+ (Discogs)") if verified else None, "x": r.get("Prix suggéré Mint (Discogs)") if verified else None,
+            "h": r.get("Possédé par (Discogs)") if verified else None, "w": r.get("Recherché par (Discogs)") if verified else None, "no": r.get("Nombre de notes (Discogs)") if verified else None, "ev": r.get("Exemplaires en vente (Discogs)") if verified else None,
+            "fa": r.get("Familles") or [], "fp": r.get("Format physique") if verified else "", "pa": (r.get("Pays du pressage") or "") if verified else "",
+            "dc": (r.get("Décennie du pressage") or "") if verified else "",
+            "album": r.get("Discogs référence album") or "", "np": r.get("Nombre de plages"),
         }
         if key in by_key:
             # Ne jamais modifier les 252 fiches historiques. Seuls les B-08
@@ -96,10 +110,10 @@ def main():
             pos = by_key[key]
             old = existing[pos]
             if bac == 'B-08':
-                metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs')}
+                metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']
-                metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Diagnostic', ''), 'photo': personal})
+                metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Enrichissement automatique') or r.get('Diagnostic', ''), 'photo': personal})
                 if cover:
                     metadata.update({'th': cover, 'rc': cover})
                 fresh = {**old, **metadata}
@@ -130,4 +144,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
