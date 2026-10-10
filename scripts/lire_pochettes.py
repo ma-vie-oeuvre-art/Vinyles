@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import urllib.parse
 import urllib.request
@@ -15,6 +17,14 @@ TABLE = "tblcqsKKwNW28bMSE"
 API = f"https://api.airtable.com/v0/{BASE}/{TABLE}"
 LIMIT = max(1, min(100, int(os.environ.get("OCR_BATCH_SIZE", "20"))))
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"
+WORKERS = max(1, min(2, int(os.environ.get('OCR_WORKERS', '2'))))
+# Tesseract otherwise starts several OpenMP threads per pass on a two-core runner.
+OCR_ENV = {**os.environ, 'OMP_THREAD_LIMIT': '1'}
+
+def bounded(image, maximum=1600):
+    image = image.copy()
+    image.thumbnail((maximum, maximum), Image.Resampling.LANCZOS)
+    return image
 
 def request_json(url, token, fields=None):
     payload = json.dumps({"fields": fields}, ensure_ascii=False).encode() if fields else None
@@ -48,12 +58,15 @@ def scan(url):
     if len(data) > 5_000_000:
         raise ValueError("image too large")
     with tempfile.NamedTemporaryFile(suffix=".img") as f:
-        f.write(data)
+        # Normalize orientation and bound pixels before all OCR passes.
+        with Image.open(__import__('io').BytesIO(data)) as original:
+            prepared = bounded(ImageOps.exif_transpose(original).convert('RGB'))
+            prepared.save(f, format='PNG')
         f.flush()
         outputs=[]
         for mode in ('3','11'):
             p = subprocess.run(["tesseract", f.name, "stdout", "-l", "eng+fra", "--psm", mode],
-                text=True, capture_output=True, timeout=35)
+                text=True, capture_output=True, timeout=35, env=OCR_ENV)
             if p.returncode: raise RuntimeError("OCR failed")
             outputs.append(p.stdout)
         # Isolate broad cover zones: full-photo OCR misses large, thin lettering.
@@ -63,12 +76,12 @@ def scan(url):
             for top, bottom in ((.18, .38), (.30, .65), (.60, .90)):
                 crop = im.crop((0, int(h*top), w, int(h*bottom)))
                 crop = ImageOps.autocontrast(ImageOps.grayscale(crop))
-                crop = crop.resize((w*2, crop.height*2))
+                crop = bounded(crop.resize((w*2, crop.height*2)))
                 with tempfile.NamedTemporaryFile(suffix='.png') as zone:
                     crop.save(zone.name)
                     for mode in ('6', '11'):
                         p = subprocess.run(['tesseract', zone.name, 'stdout', '-l', 'eng', '--psm', mode],
-                            text=True, capture_output=True, timeout=35)
+                            text=True, capture_output=True, timeout=35, env=OCR_ENV)
                         if p.returncode: raise RuntimeError('OCR zone failed')
                         outputs.append(p.stdout)
     lines = list(dict.fromkeys(re.sub(r"\s+", " ", x).strip() for output in outputs for x in output.splitlines()))
@@ -79,7 +92,15 @@ def main():
     checked = 0
     recognized = 0
     errors = 0
-    for row in records(token):
+    selected = []
+    # Read a stable snapshot before updating fields used by the Airtable filter.
+    rows = list(records(token))
+    rows.sort(key=lambda row: (
+        '[OCR pochette]' in row.get('fields', {}).get('Transcription source', ''),
+        row.get('fields', {}).get('Statut') != 'Dicté',
+        row.get('fields', {}).get('Bac', ''),
+        row.get('fields', {}).get('Ordre dans le bac', 0)))
+    for row in rows:
         f = row.get("fields", {})
         image = f.get("Photos personnelles") or f.get("Front Cover") or []
         source_match = re.search(r"fichier source: ([^\n]+)", f.get("Transcription source", ""))
@@ -92,11 +113,27 @@ def main():
         existing = f.get("Transcription source", "")
         if "[OCR zones v3]" in existing:
             continue
-        if checked >= LIMIT:
+        if len(selected) >= LIMIT:
             break
-        checked += 1
+        selected.append((row, local or image[0]['url']))
+
+    print(f'OCR: {len(selected)} photos à lire, {WORKERS} lecteurs; nouvelles photos prioritaires.', flush=True)
+
+    def read(item):
+        row, source = item
+        started = time.monotonic()
         try:
-            text = scan(local or image[0]["url"])
+            return row, scan(source), None, time.monotonic() - started
+        except Exception as exc:
+            return row, None, exc, time.monotonic() - started
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+      for row, text, failure, elapsed in pool.map(read, selected):
+        checked += 1
+        existing = row.get('fields', {}).get('Transcription source', '')
+        try:
+            if failure:
+                raise failure
             if not text:
                 print(f"{row['id']}: texte illisible; fiche inchangée")
                 continue
@@ -111,7 +148,7 @@ def main():
                     "Transcription source": source,
                     "Diagnostic": "Texte de pochette extrait automatiquement; identification Discogs à confirmer."
                 })
-            print(f"{row['id']}: OCR enregistré" + (" (simulation)" if DRY_RUN else ""))
+            print(f"{row['id']}: OCR enregistré en {elapsed:.1f}s" + (" (simulation)" if DRY_RUN else ""), flush=True)
         except Exception as exc:
             errors += 1
             print(f"{row['id']}: OCR non disponible ({type(exc).__name__}); fiche inchangée")
@@ -122,4 +159,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

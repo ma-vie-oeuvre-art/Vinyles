@@ -329,7 +329,13 @@ def main():
                     updates.update(metadata(effective,release,dg,cache))
                     updates[REPORT] = updates[REPORT].replace(VERSION,signature,1)
                 else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.\nProchaine recherche automatique : {(today+timedelta(days=1)).isoformat()}'
-            merged={**f,**updates}; updates.update(derived({**row,'fields':merged},totals))
+            merged={**f,**updates}
+            if REPORT in updates:
+                # Fingerprint the fields actually saved, including enrichment hints.
+                # Otherwise our own label/catalogue updates trigger another full lookup.
+                final_signature = VERSION + ':' + hashlib.sha256(json.dumps([merged.get('Artiste'),merged.get('Titre'),merged.get('N° catalogue'),merged.get('Label'),merged.get('Transcription source'),merged.get('Discogs release_id'),merged.get('Statut'),merged.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
+                updates[REPORT] = updates[REPORT].replace(signature, final_signature, 1)
+            updates.update(derived({**row,'fields':merged},totals))
             updates={k:v for k,v in updates.items() if f.get(k)!=v}
             if updates:
                 if os.getenv('DRY_RUN','0')!='1':request_json(endpoint+'/'+row['id'],at,{'fields':updates})
@@ -340,3 +346,4 @@ def main():
     if errors:raise SystemExit(1)
 
 if __name__=='__main__':main()
+

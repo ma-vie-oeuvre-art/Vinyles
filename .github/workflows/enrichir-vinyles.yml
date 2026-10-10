@@ -15,6 +15,9 @@ permissions:
 concurrency:
   group: enrichissement-vinyles
   cancel-in-progress: false
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_THREAD_LIMIT: '1'
 jobs:
   enrichir:
     runs-on: ubuntu-latest
@@ -44,6 +47,7 @@ jobs:
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           OCR_BATCH_SIZE: '40'
+          OCR_WORKERS: '2'
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
           python scripts/lire_pochettes.py
