@@ -17,6 +17,10 @@ def words(text):
 def album_title(title):
     return re.sub(r'\s*\(([^)]*)\)\s*$', lambda match: match[0] if re.search(r'\b(?:vol\.?|volume|part|[IVX]+|[0-9]+)\b', match[1], re.I) else '', title).strip()
 
+def self_titled(credit, title):
+    credit = re.sub(r'\s*\(\d+\)\s*$', '', str(credit)).strip('* ')
+    return bool(words(credit)) and words(credit) == words(album_title(title))
+
 def supported(ocr, credit, title):
     visible = set(words(ocr))
     title = album_title(title)
@@ -93,7 +97,7 @@ def main():
     cursor = None
     rows = []
     while True:
-        args = {'pageSize': 100, 'filterByFormula': "OR(AND(OR({Statut}='Dicté',AND({Statut}='À revoir',OR(FIND('[OCR zones v3]',{Transcription source})>0,FIND('[OCR neural texte]',{Transcription source})>0))),OR(NOT({Titre}),NOT({Artiste}))),AND(FIND('[Vérification du titre automatique]',{Transcription source})>0,NOT(FIND('[Titre vérifié automatiquement]',{Transcription source}))))"}
+        args = {'pageSize': 100, 'filterByFormula': '{Photos personnelles}'}
         if cursor:
             args['offset'] = cursor
         page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
@@ -108,12 +112,17 @@ def main():
     rows.sort(key=lambda row: (row['fields'].get('Statut') != 'Dicté', row['fields'].get('Bac', ''), row['fields'].get('Ordre dans le bac', 0)))
     for row in rows:
         f = row['fields']
-        if f.get('Ne pas retraiter') or f.get('Discogs release_id'):
+        if f.get('Ne pas retraiter') or f.get('Discogs release_id') or f.get("Preuve d'identification") == 'Validation humaine':
+            continue
+        existing_self_title = self_titled(f.get('Artiste', ''), f.get('Titre', ''))
+        if f.get('Artiste') and f.get('Titre') and not existing_self_title:
             continue
         source = f.get('Transcription source', '')
+        if existing_self_title and '[Identité visuelle vérifiée]' in source:
+            continue
         ocr = (source.partition('[OCR pochette]')[2] or source.partition('[OCR neural texte]')[2]).strip()
         neural_queries, prominent = neural_evidence(source)
-        checking_title = '[Vérification du titre automatique]' in source
+        checking_title = '[Vérification du titre automatique]' in source or existing_self_title
         ocr = re.sub(r'\[OCR neural regions\] [^\n]+', '', ocr)
         if not ocr:
             continue
@@ -125,7 +134,7 @@ def main():
         except (ValueError, TypeError):
             prior = []
         collect({'results': [{'id': item['release_id'], 'title': item['titre'], 'master_id': item.get('master_id'), 'catno': item.get('catno')} for item in prior if isinstance(item, dict) and item.get('release_id') and item.get('titre')]}, ocr, prior_albums, prior_candidates)
-        primary = {key: value for key, value in prior_albums.items() if prominent and supported(prominent, *value)}
+        primary = {key: value for key, value in prior_albums.items() if prominent and supported(prominent, *value) and not self_titled(*value)}
         specific = {key: value for key, value in primary.items() if set(words(value[1])) - set(words(value[0])) - {'THE', 'AND', 'VOL'}}
         if specific:
             primary = specific
@@ -188,6 +197,8 @@ def main():
                 albums = strong
                 artist, title = next(iter(strong.values()))
                 candidates = {key: value for key, value in candidates.items() if value['titre'].rpartition(' - ')[0] == artist and album_title(value['titre'].rpartition(' - ')[2]) == title}
+        if not catalogue_verified:
+            albums = {key: value for key, value in albums.items() if not self_titled(*value)}
         if checking_title and not catalogue_verified:
             albums = {key: value for key, value in albums.items() if supported(prominent, *value)}
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
@@ -200,11 +211,11 @@ def main():
         else:
             updates.update({'Statut': 'À revoir', 'Diagnostic': f'Lecture et recherche automatiques effectuées : {len(albums)} album(s) concordant(s). Photo conservée; identification encore incertaine.'})
             print(f'{row["id"]}: identification incertaine')
-            if checking_title and f.get('Artiste') and f.get('Titre') and not supported(prominent, f['Artiste'], f['Titre']):
+            if checking_title and f.get('Artiste') and f.get('Titre') and (existing_self_title or not supported(prominent, f['Artiste'], f['Titre'])):
                 # A small track name must not retain an unrelated album reference.
                 updates.update({'Artiste': None, 'Titre': None, 'Candidats Discogs': '[]'})
                 updates.update(reset_reference(f))
-                updates['Diagnostic'] = 'Ancienne attribution automatique retirée: le titre correspondait à un texte secondaire, sans confirmation dans les textes principaux. Recherche automatique poursuivie.'
+                updates['Diagnostic'] = 'Ancienne attribution automatique retirée: les textes seuls ne confirmaient pas ce titre; comparaison des pochettes nécessaire. Recherche automatique poursuivie.'
             visible = set(words(ocr))
             def visual_priority(item):
                 tokens = set(w for w in words(item['titre']) if len(w) >= 4)
