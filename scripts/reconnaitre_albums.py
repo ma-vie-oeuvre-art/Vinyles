@@ -175,7 +175,7 @@ def main():
         # Ambiguous, partial or unsuccessful catalogue searches keep the full fallback.
         if not (hints and complete and len(albums) == 1):
             for query in queries[:10]:
-                result = search({'q': query[:100], 'type': 'release', 'format': 'Vinyl', 'per_page': 30})
+                result = search({'q': query[:100], 'type': 'release', 'format': 'Vinyl', 'per_page': 100})
                 collect(result, ocr, albums, candidates)
         if len(albums) > 1 and prominent:
             strong = {key: value for key, value in albums.items() if supported(prominent, *value)}
