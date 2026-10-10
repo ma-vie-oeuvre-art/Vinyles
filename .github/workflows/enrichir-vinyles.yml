@@ -123,6 +123,7 @@ jobs:
         if: steps.visuel.outputs.count != '0'
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
         run: python scripts/comparer_pochettes.py
       - name: Rechercher des candidats Discogs pour les fiches Dicté
         env:

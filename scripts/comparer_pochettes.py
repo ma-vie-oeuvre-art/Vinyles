@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from enrichir_vinyles import request_json, API, BASE, TABLE
-from reconnaitre_albums import words, album_title
+from reconnaitre_albums import words, album_title, neural_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
@@ -27,7 +27,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v1:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v2:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def headers():
     return {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
@@ -141,12 +141,12 @@ def run():
             credit, sep, title = c.get('titre', '').rpartition(' - ')
             key = album_key(c)
             url = c.get('cover_url')
-            if not sep or not url or url in urls or album_counts.get(key, 0) >= 2:
+            if not sep or not url or url in urls or album_counts.get(key, 0) >= 8:
                 continue
             chosen.append(c)
             urls.add(url)
             album_counts[key] = album_counts.get(key, 0) + 1
-            if len(chosen) >= 60:
+            if len(chosen) >= 120:
                 break
 
         def load(c):
@@ -168,6 +168,38 @@ def run():
                 score = compare(photo, reference)
                 if score:
                     scores.append((score, c))
+        if not scores:
+            # A release search can be monopolized by variants of popular albums.
+            # Search masters as well: one entry per album exposes rarer artists.
+            source = f.get('Transcription source', '')
+            queries, _ = neural_evidence(source)
+            text = source.partition('[OCR neural texte]')[2].split('[OCR neural regions]')[0]
+            variants = text.replace('@', 'O')
+            variants = re.sub(r'\bZ[Oo0]{2}1', '2001', variants, flags=re.I)
+            individual = [w for w in words(variants) if len(w) >= 4 and w not in {'STEREO','MONO','RECORDS','VOLUME','POLYDOR','CORAL','DECCA'}]
+            queries = list(dict.fromkeys(queries[:4] + individual[:8]))[:10]
+            dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
+            masters = {}
+            for query in queries:
+                result = request_json('https://api.discogs.com/database/search?' + urllib.parse.urlencode({'q': query[:100], 'type': 'master', 'format': 'Vinyl', 'per_page': 100}), dg)
+                time.sleep(1.2)
+                for item in result.get('results', []):
+                    if item.get('cover_image') and ' - ' in item.get('title', ''):
+                        masters[item['id']] = {'master_id': item['id'], 'master_candidate': True, 'titre': item['title'], 'cover_url': item['cover_image']}
+            visible = set(words(source))
+            def priority(item):
+                return sum(w in visible or any(len(v) >= 6 and w.startswith(v) for v in visible) for w in set(words(item['titre'])) if len(w) >= 4)
+            master_candidates = sorted(masters.values(), key=priority, reverse=True)[:100]
+            master_candidates = [c for c in master_candidates if c['cover_url'] not in urls]
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                for c, reference, failure in pool.map(load, master_candidates):
+                    if failure:
+                        unavailable += 1
+                        continue
+                    score = compare(photo, reference)
+                    if score:
+                        scores.append((score, c))
+            print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
         scores.sort(key=lambda item: item[0], reverse=True)
         groups = {}
         for score, c in scores:
@@ -179,6 +211,17 @@ def run():
             best = scores[0][1]
             artist, _, title = best['titre'].rpartition(' - ')
             matches = [c for _, c in scores]
+            resolved = []
+            for candidate in matches:
+                if candidate.get('master_candidate'):
+                    dg = {'Authorization': 'Discogs token=' + os.environ['DISCOGS_TOKEN'], 'User-Agent': 'VinylesInventaire/1.0 (personal catalog)'}
+                    master = request_json('https://api.discogs.com/masters/' + str(candidate['master_id']), dg)
+                    time.sleep(1.2)
+                    if not master.get('main_release'):
+                        raise ValueError('Album sans version de référence')
+                    candidate = {**candidate, 'release_id': master['main_release']}
+                resolved.append(candidate)
+            matches = resolved
             updates.update({'Transcription source': f.get('Transcription source', '') if '[Identité visuelle vérifiée]' in f.get('Transcription source', '') else f.get('Transcription source', '') + '\n[Identité visuelle vérifiée]', 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
                 'Diagnostic': f'Album reconnu automatiquement par correspondances géométriques des pochettes ({scores[0][0]} points concordants); pressage précis non attribué.'})
             print(f"{row['id']}: album reconnu par image ({scores[0][0]} points)", flush=True)
