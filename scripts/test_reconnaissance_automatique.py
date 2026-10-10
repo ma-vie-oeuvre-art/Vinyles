@@ -45,3 +45,8 @@ assert c.printed_number_matches({'Transcription source':"[OCR neural texte] Seri
 assert not c.printed_number_matches({'Transcription source':"[OCR neural texte] Series N\' 3"}, {'titre':'Artist - Series N° 6'})
 assert c.printed_number_matches({'Transcription source':'[OCR neural texte] Main heading'}, {'titre':'Artist - Series N° 6'})
 print('Numéros de série imprimés vérifiés')
+
+import inspect
+import qualifier_vinyles as qualifier
+assert 'Recherche visuelle suivante' in inspect.getsource(qualifier.main)
+print('Conservation des délais de reprise vérifiée')

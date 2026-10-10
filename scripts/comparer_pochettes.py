@@ -12,11 +12,25 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from enrichir_vinyles import request_json, API, BASE, TABLE
+from enrichir_vinyles import request_json as _request_json, API, BASE, TABLE
+import urllib.error
 from reconnaitre_albums import words, album_title, neural_evidence, supported
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
+
+def request_json(url,headers,data=None):
+    for attempt in range(4):
+        try:
+            return _request_json(url,headers,data)
+        except urllib.error.HTTPError as exc:
+            if data is not None or exc.code not in (429,500,502,503,504) or attempt==3:
+                raise
+            time.sleep(min(30,int(exc.headers.get('Retry-After','0')) or 2**(attempt+1)))
+        except (urllib.error.URLError,TimeoutError):
+            if data is not None or attempt==3:
+                raise
+            time.sleep(2**(attempt+1))
 
 def near_word(a, b):
     if a == b:

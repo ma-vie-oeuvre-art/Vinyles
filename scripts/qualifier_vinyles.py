@@ -7,6 +7,8 @@ import time
 import unicodedata
 import urllib.parse
 from enrichir_vinyles import request_json, API, BASE, TABLE
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 def norm(text):
     return re.sub(r'[^A-Z0-9]', '', unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode().upper())
@@ -61,7 +63,11 @@ def main():
     errors = 0
     for row in rows:
         f = row.get('fields', {})
-        if f.get('Discogs release_id') or f.get('Ne pas retraiter'):
+        if f.get('Discogs release_id') or f.get('Ne pas retraiter') or f.get("Preuve d'identification")=='Validation humaine':
+            continue
+        today=datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
+        retry=re.search(r'Recherche visuelle suivante : (\d{4}-\d{2}-\d{2})',f.get('Diagnostic',''))
+        if retry and retry[1]>today:
             continue
         try:
             raw = f.get('Candidats Discogs')
@@ -84,6 +90,9 @@ def main():
                 updates.update({'Statut': 'Pressage à confirmer', 'Cause': 'Plusieurs pressages plausibles' if len(matches) > 1 else 'Données Discogs insuffisantes', 'Diagnostic': f'{len(matches)} candidat(s) concordant(s) sur {len(candidates)} examinés. Photo originale conservée. Pressage à départager par verso, étiquette ou matrices; aucune valeur attribuée.'})
             else:
                 updates.update({'Statut': 'À revoir', 'Cause': 'Transcription incertaine' if candidates else 'Aucun résultat Discogs', 'Diagnostic': f'Recherche effectuée : {len(candidates)} candidat(s), aucun concordant avec les données de l’objet. Photo originale conservée; catalogue et transcription à vérifier.'})
+            state=[line for line in f.get('Diagnostic','').splitlines() if line.startswith(('[comparaison-visuelle-','Recherche visuelle suivante :','[recognition-','Recherche album suivante :'))]
+            if state:
+                updates['Diagnostic']+='\n'+'\n'.join(dict.fromkeys(state))
             if not f.get('N° catalogue'):
                 updates['Cause'] = 'Numéro de catalogue absent ou incomplet'
             if all(f.get(key) == value for key, value in updates.items()):
