@@ -92,8 +92,8 @@ def derived(row, totals):
     try:
         tracks = json.loads(f.get('Tracklist JSON') or '[]')
         if not isinstance(tracks,list): raise ValueError('Tracklist JSON doit être un tableau')
-        out['Nombre de plages'] = len(tracks)
-        out['Titres — index normalisé'] = '\n'.join(str(t.get('p','')) + '\t' + normalize_title(t.get('t',t.get('title',''))) for t in tracks if isinstance(t,dict))
+        out['Nombre de plages'] = len(tracks) if f.get('Tracklist JSON') else None
+        out['Titres — index normalisé'] = '\n'.join(str(t.get('p','')) + '\t' + normalize_title(t.get('t',t.get('title',''))) for t in tracks if isinstance(t,dict)) if f.get('Tracklist JSON') else None
     except (ValueError,TypeError) as exc:
         out[REPORT] = f'{VERSION} : liste de pistes invalide; correction de la source nécessaire ({type(exc).__name__}).'
     images = f.get('Images Discogs — URLs sources')
@@ -185,3 +185,4 @@ def main():
     if errors:raise SystemExit(1)
 
 if __name__=='__main__':main()
+
