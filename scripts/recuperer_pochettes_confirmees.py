@@ -17,6 +17,10 @@ TABLE = "tblcqsKKwNW28bMSE"
 API = f"https://api.airtable.com/v0/{BASE}/{TABLE}"
 BATCH = max(1, min(100, int(os.getenv("COVER_BATCH_SIZE", "50"))))
 
+def single_source_image(source):
+    urls = re.findall(r'^(?:primary|secondary):\s*(https://\S+)', source or '', re.M)
+    return bool(urls) and len(set(urls)) == 1
+
 
 def get(url, headers):
     req = urllib.request.Request(url, headers=headers)
@@ -132,6 +136,8 @@ def main():
             continue
         if f.get('Front Cover') and f.get('Images Discogs — URLs sources') and 'secondary:' not in f['Images Discogs — URLs sources']:
             continue
+        if f.get('Front Cover') and single_source_image(f.get('Images Discogs — URLs sources')):
+            continue  # Discogs can call its only image "secondary"; no additional cover exists.
         release_id = str(f.get("Discogs release_id", "")).strip()
         candidate = None
         if not release_id.isdecimal():
@@ -215,5 +221,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
