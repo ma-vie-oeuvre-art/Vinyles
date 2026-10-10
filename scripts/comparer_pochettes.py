@@ -10,6 +10,8 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from enrichir_vinyles import request_json, API, BASE, TABLE
 from reconnaitre_albums import words, album_title, neural_evidence
 
@@ -29,6 +31,13 @@ def fingerprint(fields):
     evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
     return '[comparaison-visuelle-v2:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
+def should_compare(fields):
+    if fingerprint(fields) not in fields.get('Diagnostic', ''):
+        return True
+    retry = re.search(r'Recherche visuelle suivante : (\d{4}-\d{2}-\d{2})', fields.get('Diagnostic', ''))
+    today = datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
+    return not retry or retry[1] <= today
+
 def headers():
     return {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
 
@@ -46,7 +55,7 @@ def select():
                 continue
             try:
                 candidates = json.loads(f.get('Candidats Discogs') or '[]')
-                if any(c.get('cover_url') for c in candidates) and fingerprint(f) not in f.get('Diagnostic', ''):
+                if any(c.get('cover_url') for c in candidates) and should_compare(f):
                     rows.append(row)
             except (ValueError, TypeError):
                 continue
@@ -125,7 +134,7 @@ def run():
             continue
         candidates = json.loads(f.get('Candidats Discogs') or '[]')
         stamp = fingerprint(f)
-        if stamp in f.get('Diagnostic', ''):
+        if not should_compare(f):
             continue
         match = re.search(r'fichier source: ([^\n]+)', f.get('Transcription source', ''))
         path = (ROOT / match[1]).resolve() if match else None
@@ -186,7 +195,7 @@ def run():
                 for item in result.get('results', []):
                     if item.get('cover_image') and ' - ' in item.get('title', ''):
                         masters[item['id']] = {'master_id': item['id'], 'master_candidate': True, 'titre': item['title'], 'cover_url': item['cover_image']}
-            visible = set(words(source))
+            visible = set(words(source + ' ' + variants))
             def priority(item):
                 return sum(w in visible or any(len(v) >= 6 and w.startswith(v) for v in visible) for w in set(words(item['titre'])) if len(w) >= 4)
             master_candidates = sorted(masters.values(), key=priority, reverse=True)[:100]
@@ -230,7 +239,7 @@ def run():
             print(f"{row['id']}: {unavailable} pochette(s) inaccessible(s); comparaison à reprendre automatiquement", flush=True)
             continue
         else:
-            updates['Diagnostic'] = f.get('Diagnostic', '') + f'\nComparaison automatique: {len(chosen)} visuels examinés, {len(groups)} album(s) visuellement concordant(s).\n' + stamp
+            updates['Diagnostic'] = f.get('Diagnostic', '') + f'\nComparaison automatique: {len(chosen)} visuels examinés, {len(groups)} album(s) visuellement concordant(s).\n' + stamp + '\nRecherche visuelle suivante : ' + (datetime.now(ZoneInfo('America/Toronto')).date() + timedelta(days=1)).isoformat()
         request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': updates})
         print(f"{row['id']}: comparaison terminée en {time.monotonic()-started:.1f}s", flush=True)
     if errors:
