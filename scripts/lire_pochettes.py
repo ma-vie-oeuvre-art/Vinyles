@@ -49,12 +49,14 @@ def scan(url):
     with tempfile.NamedTemporaryFile(suffix=".img") as f:
         f.write(data)
         f.flush()
-        p = subprocess.run(["tesseract", f.name, "stdout", "-l", "eng+fra"],
-            text=True, capture_output=True, timeout=35)
-    if p.returncode:
-        raise RuntimeError("OCR failed")
-    lines = [re.sub(r"\s+", " ", x).strip() for x in p.stdout.splitlines()]
-    return " | ".join(x for x in lines if len(x) >= 3)[:1000]
+        outputs=[]
+        for mode in ('3','11'):
+            p = subprocess.run(["tesseract", f.name, "stdout", "-l", "eng+fra", "--psm", mode],
+                text=True, capture_output=True, timeout=35)
+            if p.returncode: raise RuntimeError("OCR failed")
+            outputs.append(p.stdout)
+    lines = list(dict.fromkeys(re.sub(r"\s+", " ", x).strip() for output in outputs for x in output.splitlines()))
+    return " | ".join(x for x in lines if len(x) >= 3)[:4000]
 
 def main():
     token = os.environ["AIRTABLE_TOKEN"]
@@ -72,7 +74,7 @@ def main():
         if (not image and not local) or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
             continue
         existing = f.get("Transcription source", "")
-        if "[OCR pochette]" in existing:
+        if "[OCR complément v2]" in existing:
             continue
         if checked >= LIMIT:
             break
@@ -84,7 +86,9 @@ def main():
                 continue
             recognized += 1
             # Keep prior transcriptions; OCR is a clue, never a verified identification.
-            source = (existing + "\n" if existing else "") + "[OCR pochette] " + text
+            marker = '[OCR complément v2]' if '[OCR pochette]' in existing else '[OCR pochette]'
+            source = (existing + "\n" if existing else "") + marker + " " + text
+            if marker == '[OCR pochette]': source += '\n[OCR complément v2] lecture complète effectuée'
             source = source[:90000]
             if not DRY_RUN:
                 request_json(API + "/" + row["id"], token, {

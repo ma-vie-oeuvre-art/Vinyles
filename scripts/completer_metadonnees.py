@@ -100,7 +100,10 @@ def physical_hints(f, release):
         text=''.join(c for c in unicodedata.normalize('NFD',ocr.upper()) if unicodedata.category(c)!='Mn')
         return bool(re.search(pattern,text))
     cats={x.get('catno') for x in release.get('labels',[]) if x.get('catno') and re.search(r'\d',x['catno']) and visible(x['catno'])}
-    labels={x.get('name') for x in release.get('labels',[]) if x.get('name') and visible(x['name'])}
+    def label_visible(name):
+        trademark=re.sub(r'\b(?:records?|inc|ltd|limited)\b\.?','',name,flags=re.I).strip()
+        return visible(name) or (len(re.sub(r'\W','',trademark))>=4 and visible(trademark))
+    labels={x.get('name') for x in release.get('labels',[]) if x.get('name') and label_visible(x['name'])}
     if not f.get('N° catalogue') and len(cats)==1: out['N° catalogue']=next(iter(cats))
     if not f.get('Label') and len(labels)==1: out['Label']=next(iter(labels))
     cat=f.get('N° catalogue') or out.get('N° catalogue')
@@ -307,7 +310,7 @@ def main():
         updates=derived(row,totals)
         try:
             effective={**f,**updates}
-            signature = VERSION + ':' + hashlib.sha256(json.dumps([effective.get('Artiste'),effective.get('Titre'),effective.get('N° catalogue'),effective.get('Discogs release_id'),effective.get('Statut'),effective.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
+            signature = VERSION + ':' + hashlib.sha256(json.dumps([effective.get('Artiste'),effective.get('Titre'),effective.get('N° catalogue'),effective.get('Label'),effective.get('Transcription source'),effective.get('Discogs release_id'),effective.get('Statut'),effective.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
             needed = not f.get(REPORT,'').startswith(signature) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
             if needed and fetched < 300:
                 release=resolve(effective,dg,cache); fetched+=1
