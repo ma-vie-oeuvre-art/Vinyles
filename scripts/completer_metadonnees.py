@@ -7,7 +7,7 @@ import time
 import unicodedata
 import hashlib
 import urllib.error
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import urllib.parse
 from collections import Counter
@@ -311,13 +311,17 @@ def main():
         try:
             effective={**f,**updates}
             signature = VERSION + ':' + hashlib.sha256(json.dumps([effective.get('Artiste'),effective.get('Titre'),effective.get('N° catalogue'),effective.get('Label'),effective.get('Transcription source'),effective.get('Discogs release_id'),effective.get('Statut'),effective.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
-            needed = not f.get(REPORT,'').startswith(signature) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
+            report=f.get(REPORT,'')
+            retry=re.search(r'Prochaine recherche automatique : (\d{4}-\d{2}-\d{2})',report)
+            today=datetime.now(ZoneInfo('America/Toronto')).date()
+            expired=bool(retry and retry[1]<=today.isoformat())
+            needed = (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
             if needed and fetched < 300:
                 release=resolve(effective,dg,cache); fetched+=1
                 if release:
                     updates.update(metadata(effective,release,dg,cache))
                     updates[REPORT] = updates[REPORT].replace(VERSION,signature,1)
-                else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.'
+                else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.\nProchaine recherche automatique : {(today+timedelta(days=1)).isoformat()}'
             merged={**f,**updates}; updates.update(derived({**row,'fields':merged},totals))
             updates={k:v for k,v in updates.items() if f.get(k)!=v}
             if updates:
