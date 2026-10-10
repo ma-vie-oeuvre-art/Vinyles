@@ -10,6 +10,7 @@ import time
 import urllib.parse
 import urllib.request
 from enrichir_vinyles import request_json, API, BASE, TABLE
+from reconnaitre_albums import words
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-neural-selection.json'
@@ -23,6 +24,14 @@ def marker(source):
         digest = hashlib.sha256((match[1].strip() if match else source.split('[OCR pochette]')[0].strip()).encode()).hexdigest()[:16]
     return '[OCR neural v1:' + digest + ']'
 
+def needs_review(fields):
+    if fields.get('Ne pas retraiter') or fields.get('Discogs release_id') or fields.get("Preuve d'identification") == 'Validation humaine':
+        return False
+    if not fields.get('Artiste') or not fields.get('Titre'):
+        return True
+    artist = re.sub(r'\s*\(\d+\)\s*$', '', fields['Artiste']).strip('* ')
+    return '[OCR pochette]' in fields.get('Transcription source', '') and words(artist) == words(fields['Titre'])
+
 def headers():
     return {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
 
@@ -30,13 +39,13 @@ def select():
     selected = []
     offset = None
     while True:
-        args = {'pageSize': 100, 'filterByFormula': "AND({Photos personnelles},OR(NOT({Artiste}),NOT({Titre})),NOT({Ne pas retraiter}),NOT({Discogs release_id}))"}
+        args = {'pageSize': 100, 'filterByFormula': "{Photos personnelles}"}
         if offset:
             args['offset'] = offset
         page = request_json(f'{API}/{BASE}/{TABLE}?' + urllib.parse.urlencode(args), headers())
         for row in page.get('records', []):
             source = row['fields'].get('Transcription source', '')
-            if marker(source) not in source:
+            if needs_review(row['fields']) and marker(source) not in source:
                 selected.append(row)
         offset = page.get('offset')
         if not offset:
@@ -92,7 +101,7 @@ def read():
             fields = current['fields']
             source = fields.get('Transcription source', '')
             stamp = marker(source)
-            if stamp in source or fields.get('Ne pas retraiter') or fields.get('Discogs release_id') or (fields.get('Artiste') and fields.get('Titre')):
+            if stamp in source or fields.get('Ne pas retraiter') or fields.get('Discogs release_id') or not needs_review(fields):
                 continue
             with Image.open(io.BytesIO(image_bytes(fields))) as original:
                 image = ImageOps.exif_transpose(original).convert('RGB')
@@ -100,7 +109,7 @@ def read():
                 results = reader.readtext(np.asarray(image), decoder='beamsearch', batch_size=1, workers=0)
             lines = structured_lines(results)
             text = ' | '.join(line['text'] for line in lines)
-            addition = '\n' + stamp + '\n[OCR neural texte] ' + text + '\n[OCR neural regions] ' + json.dumps(lines, ensure_ascii=False)
+            addition = ('\n[Vérification du titre automatique]' if fields.get('Artiste') and fields.get('Titre') else '') + '\n' + stamp + '\n[OCR neural texte] ' + text + '\n[OCR neural regions] ' + json.dumps(lines, ensure_ascii=False)
             request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': {
                 'Transcription source': source[:65000] + addition[:24000],
                 'Diagnostic': 'Deuxième lecture automatique effectuée dans GitHub; recherche Discogs en cours.'}})

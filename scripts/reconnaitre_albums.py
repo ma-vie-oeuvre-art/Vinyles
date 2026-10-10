@@ -82,7 +82,7 @@ def main():
     cursor = None
     rows = []
     while True:
-        args = {'pageSize': 100, 'filterByFormula': "AND(OR({Statut}='Dicté',AND({Statut}='À revoir',OR(FIND('[OCR zones v3]',{Transcription source})>0,FIND('[OCR neural texte]',{Transcription source})>0))),OR(NOT({Titre}),NOT({Artiste})))"}
+        args = {'pageSize': 100, 'filterByFormula': "OR(AND(OR({Statut}='Dicté',AND({Statut}='À revoir',OR(FIND('[OCR zones v3]',{Transcription source})>0,FIND('[OCR neural texte]',{Transcription source})>0))),OR(NOT({Titre}),NOT({Artiste}))),AND(FIND('[Vérification du titre automatique]',{Transcription source})>0,NOT(FIND('[Titre vérifié automatiquement]',{Diagnostic}))))"}
         if cursor:
             args['offset'] = cursor
         page = request_json(endpoint + '?' + urllib.parse.urlencode(args), at)
@@ -102,6 +102,7 @@ def main():
         source = f.get('Transcription source', '')
         ocr = (source.partition('[OCR pochette]')[2] or source.partition('[OCR neural texte]')[2]).strip()
         neural_queries, prominent = neural_evidence(source)
+        checking_title = '[Vérification du titre automatique]' in source
         ocr = re.sub(r'\[OCR neural regions\] [^\n]+', '', ocr)
         if not ocr:
             continue
@@ -120,7 +121,7 @@ def main():
         if len(primary) == 1:
             artist, title = next(iter(primary.values()))
             retained = [item for item in prior if supported(prominent, *str(item.get('titre', '')).rpartition(' - ')[::2])]
-            request_json(endpoint + '/' + row['id'], at, {'fields': {'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin.'}})
+            request_json(endpoint + '/' + row['id'], at, {'fields': {'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
             print(f'{row["id"]}: album reconnu depuis les preuves conservées, sans nouvelle recherche', flush=True)
             continue
         if not should_search(ocr, f.get('Diagnostic', ''), today):
@@ -165,14 +166,27 @@ def main():
                 albums = strong
                 artist, title = next(iter(strong.values()))
                 candidates = {key: value for key, value in candidates.items() if value['titre'].rpartition(' - ')[0] == artist and album_title(value['titre'].rpartition(' - ')[2]) == title}
+        if checking_title:
+            albums = {key: value for key, value in albums.items() if supported(prominent, *value)}
         updates = {'Candidats Discogs': json.dumps(list(candidates.values()), ensure_ascii=False)}
         if len(albums) == 1:
             artist, title = next(iter(albums.values()))
-            updates.update({'Artiste': artist, 'Titre': title, 'Diagnostic': 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin.'})
+            updates.update({'Artiste': artist, 'Titre': title, 'Diagnostic': 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin. [Titre vérifié automatiquement]'})
             print(f'{row["id"]}: album reconnu')
         else:
             updates.update({'Statut': 'À revoir', 'Diagnostic': f'Lecture et recherche automatiques effectuées : {len(albums)} album(s) concordant(s). Photo conservée; identification encore incertaine.'})
             print(f'{row["id"]}: identification incertaine')
+            if checking_title and f.get('Artiste') and f.get('Titre') and not supported(prominent, f['Artiste'], f['Titre']):
+                # A small track name must not retain an unrelated album reference.
+                updates.update({'Artiste': None, 'Titre': None, 'Candidats Discogs': '[]'})
+                if 'metadata-v2' in f.get('Enrichissement automatique', ''):
+                    auto_fields = ['Discogs référence release_id', 'Discogs référence album', 'Version de référence — détails', 'Tracklist JSON', 'Nombre de plages', 'Titres — index normalisé', 'Famille', 'Familles', "Année de l'album", 'Possédé par (Discogs)', 'Recherché par (Discogs)', 'Note Discogs (sur 5)', 'Nombre de notes (Discogs)', 'Exemplaires en vente (Discogs)', 'Valeur minimale', 'Prix suggéré VG+ (Discogs)', 'Prix suggéré Mint (Discogs)', "Source de l'estimation", "Date de l'estimation", "Qualité d'enregistrement (source)", 'Informations historiques', 'Enrichissement automatique']
+                    updates.update({field: None for field in auto_fields if field in f})
+                    if not f.get('Images verrouillées'):
+                        updates.update({field: [] for field in ['Front Cover', 'Back Cover'] if field in f})
+                        if 'Images Discogs — URLs sources' in f:
+                            updates['Images Discogs — URLs sources'] = None
+                updates['Diagnostic'] = 'Ancienne attribution automatique retirée: le titre correspondait à un texte secondaire, sans confirmation dans les textes principaux. Recherche automatique poursuivie.'
             updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + (today + timedelta(days=1)).isoformat()
         request_json(endpoint + '/' + row['id'], at, {'fields': updates})
         print(f'{row["id"]}: reconnaissance terminée en {time.monotonic()-started:.1f}s', flush=True)
