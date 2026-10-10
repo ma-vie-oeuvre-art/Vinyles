@@ -179,7 +179,7 @@ def run():
             best = scores[0][1]
             artist, _, title = best['titre'].rpartition(' - ')
             matches = [c for _, c in scores]
-            updates.update({'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
+            updates.update({'Transcription source': f.get('Transcription source', '') if '[Identité visuelle vérifiée]' in f.get('Transcription source', '') else f.get('Transcription source', '') + '\n[Identité visuelle vérifiée]', 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
                 'Diagnostic': f'Album reconnu automatiquement par correspondances géométriques des pochettes ({scores[0][0]} points concordants); pressage précis non attribué.'})
             print(f"{row['id']}: album reconnu par image ({scores[0][0]} points)", flush=True)
         elif unavailable:
