@@ -6,6 +6,7 @@ import re
 import time
 import unicodedata
 import hashlib
+from difflib import SequenceMatcher
 import urllib.error
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -263,6 +264,15 @@ def metadata(f, release, headers, cache):
     rid = str(release['id']); confirmed = f.get('Statut') == 'Identifié' and str(f.get('Discogs release_id','')).strip() == rid
     out = {RID:rid, REF:'https://www.discogs.com/release/' + rid}
     automatic = f.get('Enrichissement automatique', '').startswith('metadata-v') and f.get("Preuve d'identification") != 'Validation humaine'
+    if automatic and f.get('Photos personnelles') and reference_conflicts(f, release):
+        from reconnaitre_albums import reset_reference
+        out = reset_reference(f)
+        source = re.sub(r'\n\[(?:Identité visuelle vérifiée|Titre principal vérifié|identite-canonique-v\d+:[^\]]+)\]', '', f.get('Transcription source', ''))
+        source += f'\n[Référence rejetée automatiquement r{rid}: titre incompatible avec les grandes inscriptions]'
+        out.update({'Artiste': None, 'Titre': None, 'Statut': 'À revoir', 'Cause': 'Transcription incertaine', 'Candidats Discogs': '[]', 'Transcription source': source,
+                    REPORT: f'{VERSION} : référence contradictoire retirée; aucun enrichissement actif.',
+                    'Diagnostic': 'Ancienne référence retirée : son titre ne concorde pas avec les grandes inscriptions de la pochette. Recherche automatique poursuivie.'})
+        return out
     changed_reference = automatic and (str(f.get(RID, '')) != rid or not f.get('Enrichissement automatique', '').startswith(VERSION))
     if changed_reference:
         from reconnaitre_albums import reset_reference
@@ -310,6 +320,22 @@ def metadata(f, release, headers, cache):
         out.update(market_metadata(f,release,headers,cache,confirmed))
     out[REPORT] = f'{VERSION} : album renseigné depuis r{rid}. ' + ('Pressage identifié.' if confirmed else f'Référence indicative : statistiques, prix et notes décrivent r{rid}; le pressage possédé reste à confirmer.') + ' Les images secondaires Discogs ne garantissent pas un verso; les informations personnelles et la réputation sonore exigent leurs propres sources.'
     return out
+
+def reference_conflicts(fields, release):
+    """Une attribution ancienne ne peut contredire plusieurs grands mots imprimés."""
+    from reconnaitre_albums import words
+    match = re.search(r'\[OCR neural regions\] ([^\n]+)', fields.get('Transcription source', ''))
+    if not match: return False
+    try: regions = json.loads(match[1])
+    except (ValueError, TypeError): return False
+    regions = [r for r in regions if r.get('confidence', 0) >= .3]
+    if not regions: return False
+    maximum = max(r.get('height', 0) for r in regions)
+    printed = {w for r in regions if r.get('height', 0) >= maximum * .65 for w in words(r.get('text', '')) if len(w) >= 5}
+    if len(printed) < 2: return False
+    title = [w for w in words(release.get('title', '')) if len(w) >= 4]
+    artist = words(release.get('artists_sort') or ', '.join(a.get('name', '') for a in release.get('artists', [])))
+    return bool(title) and not any(a == b or SequenceMatcher(None, a, b).ratio() >= .72 for a in title + artist for b in printed)
 
 def main():
     at = {'Authorization':'Bearer ' + os.environ['AIRTABLE_TOKEN'],'Content-Type':'application/json'}

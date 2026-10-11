@@ -1,7 +1,7 @@
 """Contrôles métier : pas de comptage annoncé inventé ni de confirmation de pressage."""
 from unittest.mock import patch
 from synchroniser_bacs import summary, migrate_references
-from completer_metadonnees import metadata
+from completer_metadonnees import metadata, reference_conflicts
 
 def row(rank, **fields):
     return {'id': 'rec' + str(rank), 'fields': {'Bac': 'B-08', 'Ordre dans le bac': rank, **fields}}
@@ -41,4 +41,12 @@ assert 'Notes' not in out and 'Front Cover' not in out and 'Discogs release_id' 
 with patch('completer_metadonnees.market_metadata', return_value={}):
     out = metadata({**f, "Preuve d'identification": 'Validation humaine'}, release, {}, {})
 assert 'Titre' not in out and 'Artiste' not in out and 'Statut' not in out
+import json
+evidence = '[OCR neural regions] ' + json.dumps([{'text':'cbemins','confidence':.444,'height':44}, {'text':'oe teRre','confidence':.338,'height':48}])
+assert reference_conflicts({'Transcription source': evidence}, {'title':'Vita E.P.'})
+assert not reference_conflicts({'Transcription source': evidence}, {'title':'Chemins De Terre'})
+with patch('completer_metadonnees.market_metadata', return_value={}):
+    out = metadata({**f, 'Photos personnelles':[{'id':'photo'}], 'Transcription source':evidence}, {'id':2, 'title':'Vita E.P.'}, {}, {})
+assert out['Titre'] is None and out['Discogs référence release_id'] is None and out['Statut'] == 'À revoir'
+assert 'r2' in out['Transcription source']
 print('Comptage, références indicatives, métadonnées périmées, images verrouillées et données humaines vérifiés.')
