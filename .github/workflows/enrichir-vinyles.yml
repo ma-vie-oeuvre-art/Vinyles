@@ -44,6 +44,10 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: PHOTO_SOURCE_SHA="$(git rev-parse HEAD)" python scripts/importer_photos.py
+  publier_capture:
+    needs: importer
+    uses: ./.github/workflows/publier-vinyles.yml
+    secrets: inherit
   enrichir:
     needs: importer
     concurrency:
@@ -59,7 +63,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Vérifier les règles de reconnaissance automatique
-        run: python scripts/test_reconnaissance_automatique.py
+        run: |
+          python scripts/test_importer_photos.py
+          python scripts/test_reconnaissance_automatique.py
       - name: Vérifier la configuration
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}

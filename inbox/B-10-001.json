@@ -1,0 +1,106 @@
+{
+  "bac": "B-10",
+  "expected_count": 20,
+  "images": [
+    {
+      "bac": "B-10",
+      "position": 1,
+      "path": "photos/B-10/IMG_0880.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 2,
+      "path": "photos/B-10/IMG_0881.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 3,
+      "path": "photos/B-10/IMG_0882.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 4,
+      "path": "photos/B-10/IMG_0883.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 5,
+      "path": "photos/B-10/IMG_0884.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 6,
+      "path": "photos/B-10/IMG_0885.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 7,
+      "path": "photos/B-10/IMG_0886.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 8,
+      "path": "photos/B-10/IMG_0887.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 9,
+      "path": "photos/B-10/IMG_0888.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 10,
+      "path": "photos/B-10/IMG_0889.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 11,
+      "path": "photos/B-10/IMG_0890.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 12,
+      "path": "photos/B-10/IMG_0891.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 13,
+      "path": "photos/B-10/IMG_0892.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 14,
+      "path": "photos/B-10/IMG_0893.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 15,
+      "path": "photos/B-10/IMG_0894.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 16,
+      "path": "photos/B-10/IMG_0895.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 17,
+      "path": "photos/B-10/IMG_0896.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 18,
+      "path": "photos/B-10/IMG_0897.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 19,
+      "path": "photos/B-10/IMG_0898.jpeg"
+    },
+    {
+      "bac": "B-10",
+      "position": 20,
+      "path": "photos/B-10/IMG_0899.jpeg"
+    }
+  ]
+}
