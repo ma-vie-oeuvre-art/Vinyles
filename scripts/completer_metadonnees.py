@@ -358,7 +358,8 @@ def main():
             signature = VERSION + ':' + hashlib.sha256(json.dumps([effective.get('Artiste'),effective.get('Titre'),effective.get('N° catalogue'),effective.get('Label'),effective.get('Transcription source'),effective.get('Discogs release_id'),effective.get('Statut'),effective.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
             report=f.get(REPORT,'')
             expired='Prochaine recherche automatique :' in report and retry_due(report, 'Prochaine recherche automatique')
-            needed = os.getenv('DERIVED_ONLY','0')!='1' and (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
+            contradiction = bool(effective.get('Photos personnelles') and report.startswith('metadata-v') and effective.get("Preuve d'identification") != 'Validation humaine' and reference_conflicts(effective, {'title': effective.get('Titre', ''), 'artists_sort': effective.get('Artiste', '')}))
+            needed = os.getenv('DERIVED_ONLY','0')!='1' and (not report.startswith(signature) or expired or contradiction) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
             if needed and fetched < max(1, int(os.getenv('METADATA_BATCH_SIZE', '40'))):
                 release=resolve(effective,dg,cache); fetched+=1
                 if release:
