@@ -16,8 +16,9 @@ from reconnaitre_albums import recognition_stamp, should_search
 now = datetime(2026, 10, 11, 2, 0, tzinfo=timezone.utc)
 for label in ['Recherche album suivante', 'Recherche visuelle suivante', 'Prochaine recherche automatique']:
     report = label + ' : ' + next_retry(now)
-    assert not retry_due(report, label, now + timedelta(minutes=14))
-    assert retry_due(report, label, now + timedelta(minutes=15))
+    assert not retry_due(report, label, now + timedelta(minutes=59))
+    assert retry_due(report, label, now + timedelta(minutes=60))
+    assert next_retry(now, report=report) == (now + timedelta(days=1)).isoformat(timespec='seconds')
     assert retry_due(label + ' : 2026-10-12', label, now)
     assert not retry_due(label + ' : 2026-10-12\n' + report, label, now)
     assert retry_due(label + ' : invalid', label, now)
@@ -74,4 +75,4 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(threads) == 2, 'Comparisons must execute concurrently'
     assert len(writes) == 1 and writes[0]['Titre'] == 'Album'
     assert 'Discogs release_id' not in writes[0], 'No physical pressing inferred'
-print('Reprises à 15 minutes, abandon des anciens reports, nouvelles preuves immédiates, cache et comparaisons concurrentes vérifiés.')
+print('Reprises espacées, nouvelles preuves immédiates, cache et comparaisons concurrentes vérifiés.')

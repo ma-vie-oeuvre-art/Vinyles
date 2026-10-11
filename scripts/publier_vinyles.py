@@ -121,7 +121,7 @@ def main():
             # Actualiser les fiches enrichies par GitHub sans retirer les entrées historiques.
             pos = by_key[key]
             old = existing[pos]
-            if bac == 'B-08' or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v2'):
+            if bac == 'B-08' or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v'):
                 metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']

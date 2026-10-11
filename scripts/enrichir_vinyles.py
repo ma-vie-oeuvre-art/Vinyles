@@ -28,11 +28,18 @@ DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 
 
 def request_json(url, headers, data=None, method=None):
+    from cache_recherches import cached_search, save_search
+    is_read = data is None and method in (None, 'GET') and url.startswith('https://api.discogs.com/')
+    if is_read:
+        cached = cached_search(url)
+        if cached is not None: return cached
     payload = None if data is None else json.dumps(data).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers=headers,
                                  method=method or ("PATCH" if payload is not None else "GET"))
     with urllib.request.urlopen(req, timeout=25) as response:
-        return json.load(response)
+        result = json.load(response)
+    if is_read: save_search(url, result)
+    return result
 
 
 def eligible(fields):

@@ -15,7 +15,7 @@ from collections import Counter
 from enrichir_vinyles import request_json as _request_json, BASE, TABLE, API
 from recuperer_pochettes_confirmees import album_reference, candidate_reference
 
-VERSION = 'metadata-v2'
+VERSION = 'metadata-v3'
 REF = 'Discogs référence album'
 RID = 'Discogs référence release_id'
 REPORT = 'Enrichissement automatique'
@@ -262,10 +262,21 @@ def resolve(f, headers, cache):
 def metadata(f, release, headers, cache):
     rid = str(release['id']); confirmed = f.get('Statut') == 'Identifié' and str(f.get('Discogs release_id','')).strip() == rid
     out = {RID:rid, REF:'https://www.discogs.com/release/' + rid}
-    if not f.get('Titre') and release.get('title'): out['Titre']=release['title']
-    if not f.get('Artiste'):
+    automatic = f.get('Enrichissement automatique', '').startswith('metadata-v') and f.get("Preuve d'identification") != 'Validation humaine'
+    changed_reference = automatic and (str(f.get(RID, '')) != rid or not f.get('Enrichissement automatique', '').startswith(VERSION))
+    if changed_reference:
+        from reconnaitre_albums import reset_reference
+        out.update(reset_reference(f))
+        f = {**f, **out}
+        out.update({RID: rid, REF: 'https://www.discogs.com/release/' + rid})
+    if (not f.get('Titre') or automatic) and release.get('title'): out['Titre']=release['title']
+    if not f.get('Artiste') or automatic:
         artist=release.get('artists_sort') or ', '.join(a.get('name','') for a in release.get('artists',[]))
         if artist: out['Artiste']=artist
+    canonical = re.findall(r'\[identite-canonique-v\d+:(\d+)\]', f.get('Transcription source', ''))
+    if automatic and not confirmed and canonical and canonical[-1] == rid:
+        out.update({'Statut': 'Pressage à confirmer', 'Cause': 'Numéro de catalogue absent ou incomplet' if not f.get('N° catalogue') else 'Données Discogs insuffisantes',
+                    'Diagnostic': 'Identité de l’album synchronisée avec la référence canonique vérifiée; pressage physique non confirmé.'})
     if not f.get('Tracklist JSON') and release.get('tracklist'):
         tracks = flatten_tracks(release['tracklist'])
         out['Tracklist JSON'] = json.dumps(tracks,ensure_ascii=False,separators=(',',':'))
@@ -311,7 +322,7 @@ def main():
         rows.extend(page.get('records',[]));cursor=page.get('offset')
         if not cursor:break
     totals=Counter(r['fields'].get('Bac') for r in rows); cache={}; errors=0; changed=0; fetched=0
-    rows.sort(key=lambda r:r['fields'].get('Bac') != 'B-08')
+    rows.sort(key=lambda r: (bool(r['fields'].get(REPORT)), '[identite-canonique-' not in r['fields'].get('Transcription source', ''), -int(r['fields'].get('Bac', 'B-0').split('-')[-1])))
     for row in rows:
         f=row['fields']
         if f.get('Ne pas retraiter'):continue
@@ -322,12 +333,12 @@ def main():
             report=f.get(REPORT,'')
             expired='Prochaine recherche automatique :' in report and retry_due(report, 'Prochaine recherche automatique')
             needed = os.getenv('DERIVED_ONLY','0')!='1' and (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
-            if needed and fetched < 300:
+            if needed and fetched < 40:
                 release=resolve(effective,dg,cache); fetched+=1
                 if release:
                     updates.update(metadata(effective,release,dg,cache))
                     updates[REPORT] = updates[REPORT].replace(VERSION,signature,1)
-                else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.\nProchaine recherche automatique : {next_retry()}'
+                else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.\nProchaine recherche automatique : {next_retry(report=report)}'
             merged={**f,**updates}
             if REPORT in updates:
                 # Fingerprint the fields actually saved, including enrichment hints.

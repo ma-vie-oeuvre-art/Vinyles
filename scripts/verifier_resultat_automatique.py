@@ -26,7 +26,7 @@ def main():
             stats[2] += bool(f.get('Artiste') and f.get('Titre'))
             stats[3] += bool(f.get('Back Cover'))
             stats[4] += bool(f.get('Nombre de plages'))
-            stats[5] += bool(f.get('Discogs référence release_id') and f.get('Nombre de plages') and f.get('Enrichissement automatique', '').startswith('metadata-v2'))
+            stats[5] += bool(f.get('Discogs référence release_id') and f.get('Nombre de plages') and f.get('Enrichissement automatique', '').startswith('metadata-v'))
             stats[6] += bool(f.get('Discogs release_id') and f.get('Statut') == 'Identifié')
             key = (f.get('Bac'), f.get('Ordre dans le bac'))
             if key in rows:
@@ -45,7 +45,7 @@ def main():
             if key not in rows:
                 print(f'::warning::Position absente de la base : {key}; aucune recréation automatique.')
                 continue
-            if not any(a.get('filename') == Path(item['path']).name for a in rows[key].get('Photos personnelles', [])):
+            if not any(a.get('filename') == Path(item['path']).name and a.get('size', 0) > 0 for a in rows[key].get('Photos personnelles', [])):
                 raise ValueError(f'Capture incomplète : photo manquante pour {key}')
     lines = ['| Bac | Fiches | Photos personnelles | Albums identifiés | Images secondaires | Listes de plages | Albums enrichis | Pressages confirmés |',
              '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
@@ -55,6 +55,8 @@ def main():
         if stats[1] and stats[5] < stats[0]:
             print(f'::warning::{bac} : {stats[0]-stats[5]} fiche(s) encore sans enrichissement complet; ce bac reste en traitement automatique.')
     lines.append('\nUne exécution réussie ne signifie pas que toutes les données existent dans les sources. Les compteurs ci-dessus indiquent les résultats réels.')
+    from synchroniser_bacs import main as synchronise
+    synchronise()
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
             output.write('\n'.join(lines) + '\n')

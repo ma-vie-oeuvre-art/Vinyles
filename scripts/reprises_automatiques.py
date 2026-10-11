@@ -2,10 +2,12 @@
 import re
 from datetime import datetime, timedelta, timezone
 
-RETRY_MINUTES = 15
+RETRY_MINUTES = 60
 
-def next_retry(now=None):
-    return ((now or datetime.now(timezone.utc)) + timedelta(minutes=RETRY_MINUTES)).isoformat(timespec='seconds')
+def next_retry(now=None, report=''):
+    # Une première reprise après une heure, puis une fois par jour sans preuve nouvelle.
+    minutes = 24 * 60 if re.search(r'(?:Recherche (?:album|visuelle) suivante|Prochaine recherche automatique) :', report) else RETRY_MINUTES
+    return ((now or datetime.now(timezone.utc)) + timedelta(minutes=minutes)).isoformat(timespec='seconds')
 
 def retry_due(report, label, now=None):
     matches = re.findall(re.escape(label) + r' : (\S+)', report)

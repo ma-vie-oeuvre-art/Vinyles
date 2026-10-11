@@ -93,7 +93,7 @@ def neural_evidence(source):
     return list(dict.fromkeys(queries)), ' | '.join(texts)
 
 def reset_reference(fields):
-    if 'metadata-v2' not in fields.get('Enrichissement automatique', ''):
+    if not fields.get('Enrichissement automatique', '').startswith('metadata-v'):
         return {}
     keys = ['Discogs référence release_id', 'Discogs référence album', 'Version de référence — détails', 'Tracklist JSON', 'Nombre de plages', 'Titres — index normalisé', 'Famille', 'Familles', "Année de l'album", 'Possédé par (Discogs)', 'Recherché par (Discogs)', 'Note Discogs (sur 5)', 'Nombre de notes (Discogs)', 'Exemplaires en vente (Discogs)', 'Valeur minimale', 'Prix suggéré VG+ (Discogs)', 'Prix suggéré Mint (Discogs)', "Source de l'estimation", "Date de l'estimation", "Qualité d'enregistrement (source)", 'Informations historiques', 'Enrichissement automatique']
     updates = {key: None for key in keys if key in fields}
@@ -244,7 +244,7 @@ def main():
                 pool.pop()
             if pool:
                 updates['Candidats Discogs'] = json.dumps(pool, ensure_ascii=False)
-            updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + next_retry()
+            updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + next_retry(report=f.get('Diagnostic', ''))
         request_json(endpoint + '/' + row['id'], at, {'fields': updates})
         print(f'{row["id"]}: reconnaissance terminée en {time.monotonic()-started:.1f}s', flush=True)
 

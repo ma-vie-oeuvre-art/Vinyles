@@ -53,6 +53,10 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: PHOTO_SOURCE_SHA="$(git rev-parse HEAD)" python scripts/importer_photos.py
+      - name: Synchroniser les bacs et séparer les références non confirmées
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+        run: python scripts/synchroniser_bacs.py --migrate-references
   enrichir:
     name: Traitement automatique
     needs: importer
@@ -73,11 +77,18 @@ jobs:
           python scripts/test_importer_photos.py
           python scripts/test_reconnaissance_automatique.py
           python scripts/test_reprises_automatiques.py
+          python scripts/test_synchroniser_bacs.py
       - name: Vérifier la configuration
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
         run: python scripts/verifier_configuration.py
+      - name: Réutiliser les recherches et références Discogs récentes
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vinyles-search-cache
+          key: discogs-cache-v2-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: discogs-cache-v2-${{ runner.os }}-
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
