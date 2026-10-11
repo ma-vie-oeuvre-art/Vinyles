@@ -1,0 +1,150 @@
+{
+  "bac": "B-11",
+  "expected_count": 24,
+  "images": [
+    {
+      "bac": "B-11",
+      "position": 1,
+      "path": "photos/B-11/IMG_0905(1).jpeg",
+      "sha256": "1c0ac3839c3c12ef709ac375507a959883b201bd1bd2e19fac8f458e98290695"
+    },
+    {
+      "bac": "B-11",
+      "position": 2,
+      "path": "photos/B-11/IMG_0906.jpeg",
+      "sha256": "b257982bd37311fdf3944fbb84775cf6b3733e5c593492c8e31319b7652b0ed2"
+    },
+    {
+      "bac": "B-11",
+      "position": 3,
+      "path": "photos/B-11/IMG_0907(1).jpeg",
+      "sha256": "95a28686eafb5f1366613da3de6bd7301f15065c4982a1eb54a30a59abc5d061"
+    },
+    {
+      "bac": "B-11",
+      "position": 4,
+      "path": "photos/B-11/IMG_0908(1).jpeg",
+      "sha256": "22ebcc6692e4c7bf7e99ba3576adfe22f4ac09f7aadb4bb83d22af425cbc01e6"
+    },
+    {
+      "bac": "B-11",
+      "position": 5,
+      "path": "photos/B-11/IMG_0909(1).jpeg",
+      "sha256": "697fe293c2538c3ff0da7ef44d9c16fc16e03ad7674566ffa6699b9923767017"
+    },
+    {
+      "bac": "B-11",
+      "position": 6,
+      "path": "photos/B-11/IMG_0910(1).jpeg",
+      "sha256": "50eb7f3bbefab1d1be6878d0400d66fc7de2a7d32fd3c290df213ea862490abe"
+    },
+    {
+      "bac": "B-11",
+      "position": 7,
+      "path": "photos/B-11/IMG_0911(1).jpeg",
+      "sha256": "55b49d898af528f0473623df1c04b32bd585d06a5f62f1f48ab033e031139a0f"
+    },
+    {
+      "bac": "B-11",
+      "position": 8,
+      "path": "photos/B-11/IMG_0912(1).jpeg",
+      "sha256": "a60871c1c9717cc41b4b540e903ab88849fdad794557085668d830152f23d081"
+    },
+    {
+      "bac": "B-11",
+      "position": 9,
+      "path": "photos/B-11/IMG_0913(1).jpeg",
+      "sha256": "c1fde6f35db32d9506b3094821457ebd683988a4eeafafc95e4dea4ed0f9c8ad"
+    },
+    {
+      "bac": "B-11",
+      "position": 10,
+      "path": "photos/B-11/IMG_0914(1).jpeg",
+      "sha256": "ab9ed63ab5d0a83f9f68b7fed423538b63c7c049a17a43e0ccdcc7c70e1f6fd6"
+    },
+    {
+      "bac": "B-11",
+      "position": 11,
+      "path": "photos/B-11/IMG_0915.jpeg",
+      "sha256": "4c198a4f0e44da7862f2baa11fc556da4569ce44b5243a78ad116411279daa21"
+    },
+    {
+      "bac": "B-11",
+      "position": 12,
+      "path": "photos/B-11/IMG_0916.jpeg",
+      "sha256": "66a55018a39674bfc31fc0f36b62fa0d290966a5fafd3fc34f599fadc6a73f69"
+    },
+    {
+      "bac": "B-11",
+      "position": 13,
+      "path": "photos/B-11/IMG_0918.jpeg",
+      "sha256": "d9f62eb4b50c867c2bb474b6ba9ddf22418df849fe321f0670e4cd8fde9c5f7c"
+    },
+    {
+      "bac": "B-11",
+      "position": 14,
+      "path": "photos/B-11/IMG_0919.jpeg",
+      "sha256": "5100963b9780aa1c4aae69e5a8afdf9e29083cbe4c2b3b1d91a2bea6f75169f5"
+    },
+    {
+      "bac": "B-11",
+      "position": 15,
+      "path": "photos/B-11/IMG_0921.jpeg",
+      "sha256": "946e4d403c64b37faaf9913a4119d8fa2c103b7eaf9dd2fcd4bf35a90b06657a"
+    },
+    {
+      "bac": "B-11",
+      "position": 16,
+      "path": "photos/B-11/IMG_0922.jpeg",
+      "sha256": "df1a6586dcfda4f383b64e8a35b0e9c80586c54d47c587a83a46340e6e800959"
+    },
+    {
+      "bac": "B-11",
+      "position": 17,
+      "path": "photos/B-11/IMG_0923.jpeg",
+      "sha256": "f245ef93aec682be9cdf22b870c6a01df98b1411bd2610b34838e13fbc929a0b"
+    },
+    {
+      "bac": "B-11",
+      "position": 18,
+      "path": "photos/B-11/IMG_0924.jpeg",
+      "sha256": "d7eecd70c69951f3eb2a521c8481b55d9f63ffe477c8ef36cbd006e894ab1fff"
+    },
+    {
+      "bac": "B-11",
+      "position": 19,
+      "path": "photos/B-11/IMG_0925.jpeg",
+      "sha256": "70e6aebcc7b3dfd6b1dd9b61e823af32c051753548173bbe37ca954e71192f31"
+    },
+    {
+      "bac": "B-11",
+      "position": 20,
+      "path": "photos/B-11/IMG_0926.jpeg",
+      "sha256": "f0a0cc96881df7710cda3a539185da2dc9044d1bd52925a44541a705088ff458"
+    },
+    {
+      "bac": "B-11",
+      "position": 21,
+      "path": "photos/B-11/IMG_0927.jpeg",
+      "sha256": "6c35b6e770f230abcc1c3b7e32ff1cd924e192b9e8966300d5533e4bcf014fdf"
+    },
+    {
+      "bac": "B-11",
+      "position": 22,
+      "path": "photos/B-11/IMG_0928.jpeg",
+      "sha256": "c5c69c2ef5400224bd4cb79b6482e70dac4ce4b9f1ea1e94d140aa64afda8043"
+    },
+    {
+      "bac": "B-11",
+      "position": 23,
+      "path": "photos/B-11/IMG_0929.jpeg",
+      "sha256": "cd55c9edba7f642b1de80ee56dc3f5c4d3682eab90dc65612f61cef9a46b7393"
+    },
+    {
+      "bac": "B-11",
+      "position": 24,
+      "path": "photos/B-11/IMG_0930.jpeg",
+      "sha256": "290741277a57cae1d129096cc12c1296572ad1bfbf5192c2369c2a470ecf2231"
+    }
+  ]
+}
