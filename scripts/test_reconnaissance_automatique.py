@@ -72,3 +72,8 @@ assert words('Спас Джонев') == ['SPAS', 'DZHONEV']
 assert supported('Спас Джонев Рецитал', 'Спас Джонев', 'Рецитал')
 assert norm('На гости на Бяло Сладко') != norm('Друг албум')
 print('Lecture et comparaison des titres bulgares vérifiées')
+from reconnaitre_albums import capture_queries
+assert capture_queries({'Transcription source':'The Shadows, Out of the Shadows. Source photo: IMG_0888.jpeg\nPhoto personnelle — fichier source: photos/B-10/IMG_0888.jpeg'}) == ['The Shadows, Out of the Shadows']
+assert capture_queries({'Transcription source':'Pochette illisible sur photo floue; à revoir. Source photo: IMG_0885.jpeg'}) == []
+assert capture_queries({'Transcription source':'Photo personnelle — fichier source: photos/B-09/001.jpeg\n[OCR pochette] un titre'}) == []
+print('Indices de capture prioritaires, sans attribution inventée, vérifiés')

@@ -51,6 +51,14 @@ def catalogues(ocr):
     return list(dict.fromkeys(prefix + digits for prefix, digits in
         re.findall(r'\b([A-Z]{1,4})[ -]*(\d{3,7})\b', ocr.upper()) if prefix in known))[:3]
 
+def capture_queries(fields):
+    """Use captured descriptions only as search hints; image evidence still decides."""
+    source = fields.get('Transcription source', '').split('\nPhoto personnelle')[0].split('[OCR pochette]')[0]
+    source = re.split(r'Source photo:|IMG_\d+|\bPochette\b|\bNuméro de catalogue\b', source, flags=re.I)[0].strip(' .;\n')
+    if not source or source.startswith(('Photo personnelle', 'Pochette illisible')):
+        return []
+    return [source[:100]]
+
 def collect(result, ocr, albums, candidates, catalogue=None, corroborated_catalogue=False):
     for item in result.get('results', []):
         if catalogue and re.sub(r'[^A-Z0-9]', '', str(item.get('catno', '')).upper()) != catalogue:
@@ -157,7 +165,7 @@ def main():
         started = time.monotonic()
         lines = [s.strip() for s in ocr.replace('\n', ' | ').split(' | ') if 1 <= len(words(s)) <= 10 and sum(len(w) >= 4 for w in words(s)) >= 1]
         lines.sort(key=lambda s: (sum(len(w) >= 4 for w in words(s)) >= 2, sum(len(w) for w in words(s))/len(words(s))), reverse=True)
-        queries = list(dict.fromkeys(neural_queries + lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
+        queries = list(dict.fromkeys(capture_queries(f) + neural_queries + lines[:6] + [' '.join(lines[i:i+2]) for i in range(min(4, len(lines)-1))]))
         albums = {}
         candidates = {}
         visual_candidates = {}
@@ -172,7 +180,8 @@ def main():
                 if item.get('type') == 'release' and item.get('cover_image') and ' - ' in item.get('title', ''):
                     visual_candidates[item['id']] = {'release_id': item['id'], 'master_id': item.get('master_id'), 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year'), 'cover_url': item['cover_image']}
             return cache[url]
-        hints = catalogues(ocr)
+        physical_hint = re.sub(r'[^A-Z0-9]', '', str(f.get('N° catalogue', '')).upper())
+        hints = list(dict.fromkeys(([physical_hint] if physical_hint else []) + catalogues(ocr)))[:4]
         initial_text = ocr.split('[OCR neural v1:')[0]
         neural_text = source.partition('[OCR neural texte]')[2].split('[OCR neural regions]')[0]
         corroborated = set(catalogues(initial_text)) & set(catalogues(neural_text))
@@ -183,7 +192,8 @@ def main():
             result = search({'catno': hint, 'type': 'release', 'format': 'Vinyl', 'per_page': 100})
             complete = complete and int(result.get('pagination', {}).get('pages', 1)) <= 1
             collect(result, ocr, albums, candidates, hint, hint in corroborated)
-        catalogue_verified = bool(corroborated and complete and len(albums) == 1)
+        physical_match = physical_hint and any(re.sub(r'[^A-Z0-9]', '', str(c.get('catno', '')).upper()) == physical_hint for c in candidates.values())
+        catalogue_verified = bool((corroborated or physical_match) and complete and len(albums) == 1)
         # Stop only when all exact catalogue results support a single visible album.
         # Ambiguous, partial or unsuccessful catalogue searches keep the full fallback.
         if not (hints and complete and len(albums) == 1):
