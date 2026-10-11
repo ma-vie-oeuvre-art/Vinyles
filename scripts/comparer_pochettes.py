@@ -10,8 +10,8 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from reprises_automatiques import retry_due, next_retry
+from cache_recherches import cached_search, save_search
 from enrichir_vinyles import request_json as _request_json, API, BASE, TABLE
 import urllib.error
 from reconnaitre_albums import words, album_title, neural_evidence, supported, reset_reference
@@ -20,9 +20,15 @@ ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
 
 def request_json(url,headers,data=None):
+    cached = cached_search(url) if data is None else None
+    if cached is not None:
+        return cached
     for attempt in range(4):
         try:
-            return _request_json(url,headers,data)
+            result = _request_json(url,headers,data)
+            if data is None:
+                save_search(url, result)
+            return result
         except urllib.error.HTTPError as exc:
             if data is not None or exc.code not in (429,500,502,503,504) or attempt==3:
                 raise
@@ -149,15 +155,13 @@ def album_key(candidate):
 def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
-    evidence = [match[1] if match else fields.get('Clé'), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v14:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    evidence = [match[1] if match else fields.get('Clé'), fields.get('Transcription source', ''), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
+    return '[comparaison-visuelle-v15:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
         return True
-    retry = re.search(r'Recherche visuelle suivante : (\d{4}-\d{2}-\d{2})', fields.get('Diagnostic', ''))
-    today = datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
-    return not retry or retry[1] <= today
+    return retry_due(fields.get('Diagnostic', ''), 'Recherche visuelle suivante')
 
 def canonical_candidate(fields):
     if not any(marker in fields.get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]','[Titre vérifié automatiquement]']):
@@ -274,7 +278,7 @@ def download(url):
 
 def run():
     import cv2
-    cv2.setNumThreads(2)
+    cv2.setNumThreads(1)
     rows = json.loads(SELECTION.read_text(encoding='utf-8'))
     cache = {}
     errors = 0
@@ -339,19 +343,19 @@ def run():
             try:
                 if url not in cache:
                     cache[url] = features(download(url))
-                return c, cache[url], None
+                credit, _, title = c['titre'].rpartition(' - ')
+                score = compare(photo, cache[url], supported(f.get('Transcription source', ''), credit, title))
+                return c, score, None
             except Exception as exc:
                 return c, None, type(exc).__name__
 
         scores = []
         unavailable = 0
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            for c, reference, failure in pool.map(load, chosen):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            for c, score, failure in pool.map(load, chosen):
                 if failure:
                     unavailable += 1
                     continue
-                credit, _, title = c['titre'].rpartition(' - ')
-                score = compare(photo, reference, supported(f.get('Transcription source', ''), credit, title))
                 if score:
                     scores.append((score, c))
         master_candidates = []
@@ -413,13 +417,11 @@ def run():
             master_candidates = sorted(masters.values(), key=priority, reverse=True)[:100]
             master_candidates = [c for c in master_candidates if c['cover_url'] not in urls]
             print('Albums prioritaires: ' + json.dumps([c['titre'] for c in master_candidates[:12]],ensure_ascii=False),flush=True)
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                for c, reference, failure in pool.map(load, master_candidates):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                for c, score, failure in pool.map(load, master_candidates):
                     if failure:
                         unavailable += 1
                         continue
-                    credit, _, title = c['titre'].rpartition(' - ')
-                    score = compare(photo, reference, supported(f.get('Transcription source', ''), credit, title))
                     if score:
                         scores.append((score, c))
             print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
@@ -468,7 +470,7 @@ def run():
             print(f"{row['id']}: {unavailable} pochette(s) inaccessible(s); comparaison à reprendre automatiquement", flush=True)
             continue
         else:
-            updates['Diagnostic'] = f.get('Diagnostic', '') + f'\nComparaison automatique: {len(chosen)} visuels examinés, {len(groups)} album(s) visuellement concordant(s).\n' + stamp + '\nRecherche visuelle suivante : ' + (datetime.now(ZoneInfo('America/Toronto')).date() + timedelta(days=1)).isoformat()
+            updates['Diagnostic'] = f.get('Diagnostic', '') + f'\nComparaison automatique: {len(chosen)} visuels examinés, {len(groups)} album(s) visuellement concordant(s).\n' + stamp + '\nRecherche visuelle suivante : ' + next_retry()
         request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': updates})
         print(f"{row['id']}: comparaison terminée en {time.monotonic()-started:.1f}s", flush=True)
     if errors:

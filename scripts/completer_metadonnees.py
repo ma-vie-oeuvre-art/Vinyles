@@ -7,8 +7,9 @@ import time
 import unicodedata
 import hashlib
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
+from reprises_automatiques import retry_due, next_retry
 import urllib.parse
 from collections import Counter
 from enrichir_vinyles import request_json as _request_json, BASE, TABLE, API
@@ -319,16 +320,14 @@ def main():
             effective={**f,**updates}
             signature = VERSION + ':' + hashlib.sha256(json.dumps([effective.get('Artiste'),effective.get('Titre'),effective.get('N° catalogue'),effective.get('Label'),effective.get('Transcription source'),effective.get('Discogs release_id'),effective.get('Statut'),effective.get('Candidats Discogs')],ensure_ascii=False).encode()).hexdigest()[:12]
             report=f.get(REPORT,'')
-            retry=re.search(r'Prochaine recherche automatique : (\d{4}-\d{2}-\d{2})',report)
-            today=datetime.now(ZoneInfo('America/Toronto')).date()
-            expired=bool(retry and retry[1]<=today.isoformat())
+            expired='Prochaine recherche automatique :' in report and retry_due(report, 'Prochaine recherche automatique')
             needed = os.getenv('DERIVED_ONLY','0')!='1' and (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
             if needed and fetched < 300:
                 release=resolve(effective,dg,cache); fetched+=1
                 if release:
                     updates.update(metadata(effective,release,dg,cache))
                     updates[REPORT] = updates[REPORT].replace(VERSION,signature,1)
-                else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.\nProchaine recherche automatique : {(today+timedelta(days=1)).isoformat()}'
+                else: updates[REPORT]=f'{signature} : album sans correspondance certaine; photo conservée, aucune métadonnée inventée.\nProchaine recherche automatique : {next_retry()}'
             merged={**f,**updates}
             if REPORT in updates:
                 # Fingerprint the fields actually saved, including enrichment hints.

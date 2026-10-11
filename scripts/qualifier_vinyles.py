@@ -7,8 +7,7 @@ import time
 import unicodedata
 import urllib.parse
 from enrichir_vinyles import request_json, API, BASE, TABLE
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from reprises_automatiques import retry_due
 
 def norm(text):
     from reconnaitre_albums import words
@@ -66,9 +65,7 @@ def main():
         f = row.get('fields', {})
         if f.get('Discogs release_id') or f.get('Ne pas retraiter') or f.get("Preuve d'identification")=='Validation humaine':
             continue
-        today=datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
-        retry=re.search(r'Recherche visuelle suivante : (\d{4}-\d{2}-\d{2})',f.get('Diagnostic',''))
-        if retry and retry[1]>today:
+        if not retry_due(f.get('Diagnostic', ''), 'Recherche visuelle suivante'):
             continue
         try:
             raw = f.get('Candidats Discogs')

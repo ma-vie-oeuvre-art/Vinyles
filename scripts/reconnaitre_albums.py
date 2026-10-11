@@ -5,8 +5,10 @@ import re
 import time
 import unicodedata
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
+from reprises_automatiques import retry_due, next_retry
+from cache_recherches import cached_search, save_search
 import urllib.parse
 from enrichir_vinyles import request_json, API, BASE, TABLE
 
@@ -42,8 +44,7 @@ def recognition_stamp(ocr):
 def should_search(ocr, diagnostic, today):
     if recognition_stamp(ocr) not in diagnostic:
         return True
-    retry = re.search(r'Recherche album suivante : (\d{4}-\d{2}-\d{2})', diagnostic)
-    return not retry or retry[1] <= today.isoformat()
+    return retry_due(diagnostic, 'Recherche album suivante')
 
 def catalogues(ocr):
     # Search hints only: never assign a physical catalogue from this extraction.
@@ -173,9 +174,13 @@ def main():
             nonlocal last_call
             url = 'https://api.discogs.com/database/search?' + urllib.parse.urlencode(params)
             if url not in cache:
-                time.sleep(max(0, 2.2 - (time.monotonic() - last_call)))
-                last_call = time.monotonic()
-                cache[url] = request_json(url, dg)
+                result = cached_search(url)
+                if result is None:
+                    time.sleep(max(0, 2.2 - (time.monotonic() - last_call)))
+                    last_call = time.monotonic()
+                    result = request_json(url, dg)
+                    save_search(url, result)
+                cache[url] = result
             for item in cache[url].get('results', []):
                 if item.get('type') == 'release' and item.get('cover_image') and ' - ' in item.get('title', ''):
                     visual_candidates[item['id']] = {'release_id': item['id'], 'master_id': item.get('master_id'), 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year'), 'cover_url': item['cover_image']}
@@ -239,7 +244,7 @@ def main():
                 pool.pop()
             if pool:
                 updates['Candidats Discogs'] = json.dumps(pool, ensure_ascii=False)
-            updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + (today + timedelta(days=1)).isoformat()
+            updates['Diagnostic'] += '\n' + recognition_stamp(ocr) + '\nRecherche album suivante : ' + next_retry()
         request_json(endpoint + '/' + row['id'], at, {'fields': updates})
         print(f'{row["id"]}: reconnaissance terminée en {time.monotonic()-started:.1f}s', flush=True)
 

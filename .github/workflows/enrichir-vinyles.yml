@@ -72,6 +72,7 @@ jobs:
         run: |
           python scripts/test_importer_photos.py
           python scripts/test_reconnaissance_automatique.py
+          python scripts/test_reprises_automatiques.py
       - name: Vérifier la configuration
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
