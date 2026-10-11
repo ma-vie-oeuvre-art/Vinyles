@@ -1,5 +1,6 @@
 """GitHub importe les lots d'images une seule fois, sans recréer les fiches supprimées."""
 import json
+import hashlib
 import os
 import urllib.error
 import urllib.parse
@@ -51,6 +52,8 @@ def main():
             photo = (ROOT / item['path']).resolve()
             if ROOT not in photo.parents or not photo.is_file():
                 raise ValueError('Image source absente ou chemin invalide')
+            if item.get('sha256') and hashlib.sha256(photo.read_bytes()).hexdigest() != item['sha256']:
+                raise ValueError('Photo source incomplète : empreinte incorrecte')
             bac, position = item['bac'], item['position']
             if not isinstance(position, int) or position < 1:
                 raise ValueError('Position invalide')
@@ -74,12 +77,18 @@ def main():
             if key in existing:
                 row = existing[key]
                 prior = row['fields'].get('Photos personnelles') or []
-                if any(a.get('filename') == photo.name for a in prior):
-                    continue
-                fields = {'Photos personnelles': [{'id': a['id']} for a in prior] + [attachment]}
                 source = row['fields'].get('Transcription source', '')
+                stamp = '[Photo complète sha256:' + item['sha256'] + ']' if item.get('refresh_attachment') and item.get('sha256') else None
+                if any(a.get('filename') == photo.name for a in prior) and (not stamp or stamp in source):
+                    continue
+                retained = [a for a in prior if not stamp or a.get('filename') != photo.name]
+                fields = {'Photos personnelles': [{'id': a['id']} for a in retained] + [attachment]}
                 if source_line not in source:
-                    fields['Transcription source'] = source + ('\n' if source else '') + source_line
+                    source += ('\n' if source else '') + source_line
+                if stamp and stamp not in source:
+                    source += '\n' + stamp
+                if source != row['fields'].get('Transcription source', ''):
+                    fields['Transcription source'] = source
                 pending_update.append({'id': row['id'], 'fields': fields})
                 continue
             fields = {'Clé': f'{bac}-{position:03}', 'Bac': bac, 'Ordre dans le bac': position,

@@ -1,6 +1,7 @@
 """Distinguer la réussite technique des fiches effectivement complétées."""
 import os
 import json
+import hashlib
 import urllib.parse
 from collections import defaultdict
 from pathlib import Path
@@ -37,6 +38,9 @@ def main():
     # Check each declared photograph against the actual Airtable attachment.
     for manifest in (Path(__file__).resolve().parents[1] / 'inbox').glob('**/*.json'):
         for item in json.loads(manifest.read_text())['images']:
+            photo = Path(__file__).resolve().parents[1] / item['path']
+            if item.get('sha256') and hashlib.sha256(photo.read_bytes()).hexdigest() != item['sha256']:
+                raise ValueError(f'Image source tronquée : {item["path"]}')
             key = (item['bac'], item['position'])
             if key not in rows:
                 print(f'::warning::Position absente de la base : {key}; aucune recréation automatique.')

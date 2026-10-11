@@ -1,5 +1,6 @@
 """Verify resume, preservation and attachment repair without external writes."""
 import base64
+import hashlib
 import json
 import os
 import tempfile
@@ -44,13 +45,24 @@ def check():
                 {'AIRTABLE_TOKEN': 'test', 'GITHUB_TOKEN': 'test', 'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_SHA': 'source'}):
             imp.main()
             assert len(writes) == 1
+            # Replace a damaged copy once, retaining every unrelated attachment.
+            digest = hashlib.sha256(b'photo').hexdigest()
+            (root / 'inbox/two.json').write_text(json.dumps({'images': [
+                {'bac': 'B-10', 'position': 1, 'path': 'photos/one.jpeg',
+                 'refresh_attachment': True, 'sha256': digest}]}))
+            imp.main()
+            assert len(writes) == 2
+            assert len(row['fields']['Photos personnelles']) == 2
+            ledger.remove('inbox/two.json')
+            imp.main()
+            assert len(writes) == 2
             assert row['fields']['Statut'] == 'Identifié'
             assert row['fields']['Titre'] == 'Protected title'
             assert row['fields']['Transcription source'].startswith('Original dictation\n')
             # A retry after writes but before ledger persistence must not append duplicates.
             ledger = []
             imp.main()
-            assert len(writes) == 1
+            assert len(writes) == 2
             # A completed import does not recreate an intentionally removed row.
             row.clear()
             def retired(url, headers, data=None, method=None):
@@ -60,7 +72,7 @@ def check():
                 return {'records': []}
             with patch.object(imp, 'request_json', retired):
                 imp.main()
-        print('Attachment repair, original data, prior photos, interrupted retry and retired rows verified.')
+        print('Attachment repair, original data, prior photos, interrupted retry, source integrity and retired rows verified.')
 
 
 if __name__ == '__main__':
