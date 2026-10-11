@@ -11,7 +11,33 @@ from pathlib import Path
 BASE = "apporVr2Na6l5HGh2"
 TABLE = "tblcqsKKwNW28bMSE"
 MARKER = "const D = /*__DONNEES__*/"
-SITE = Path(__file__).resolve().parents[1] / "index.html"
+ROOT = Path(__file__).resolve().parents[1]
+SITE = ROOT / "index.html"
+
+def site_images(fields):
+    """Publish durable source URLs, never expiring Airtable download links."""
+    cover = as_url(fields.get('Front Cover')) or as_url(fields.get('Photos personnelles'))
+    personal = False
+    paths = re.findall(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
+    for attachment in fields.get('Photos personnelles') or []:
+        filename = attachment.get('filename', '')
+        if filename and Path(filename).name == filename:
+            paths.append('photos/' + str(fields.get('Bac', '')) + '/' + filename)
+    for path in paths:
+        local = (ROOT / path.strip()).resolve()
+        if ROOT.resolve() in local.parents and local.is_file() and local.suffix.lower() in {'.jpg', '.jpeg', '.png', '.webp'}:
+            cover = local.relative_to(ROOT.resolve()).as_posix()
+            personal = True
+            break
+    back = as_url(fields.get('Back Cover'))
+    sources = fields.get('Images Discogs — URLs sources', '')
+    primary = re.search(r'(?:^|\n)primary: (https://\S+)', sources)
+    secondary = re.search(r'(?:^|\n)secondary: (https://\S+)', sources)
+    if primary and fields.get('Front Cover') and not personal:
+        cover = 'https://images.weserv.nl/?url=' + urllib.parse.quote(primary[1], safe='') + '&output=jpg'
+    if secondary and back:
+        back = 'https://images.weserv.nl/?url=' + urllib.parse.quote(secondary[1], safe='') + '&output=jpg'
+    return cover, back, personal
 
 def fetch_rows(token):
     rows, cursor = [], None
@@ -67,34 +93,18 @@ def main():
         if key in seen:
             raise ValueError(f"Position Airtable dupliquée : {key}; site inchangé")
         seen.add(key)
-        cover = as_url(r.get("Front Cover"))
-        if not cover:
-            cover = as_url(r.get("Photos personnelles"))
-        personal = bool(bac == 'B-08' and (r.get('Front Cover') or r.get('Photos personnelles')) and
-                        (r.get('Front Cover') or r.get('Photos personnelles'))[0].get('filename') == f'IMG_{820 + int(pos):04}.jpeg')
-        if personal:
-            cover = f'photos/B-08/IMG_{820 + int(pos):04}.jpeg'
-        # Les URL de pièces jointes Airtable expirent. Les sources Discogs
-        # permettent au site de conserver une illustration accessible.
-        back = as_url(r.get('Back Cover'))
-        sources = r.get('Images Discogs — URLs sources', '')
-        if bac == 'B-08' and sources:
-            primary = re.search(r'(?:^|\n)primary: (https://\S+)', sources)
-            secondary = re.search(r'(?:^|\n)secondary: (https://\S+)', sources)
-            if primary and r.get('Front Cover'):
-                cover = 'https://images.weserv.nl/?url=' + urllib.parse.quote(primary[1], safe='') + '&output=jpg'
-                personal = False
-            if secondary and back:
-                back = 'https://images.weserv.nl/?url=' + urllib.parse.quote(secondary[1], safe='') + '&output=jpg'
+        cover, back, personal = site_images(r)
         release = r.get("Discogs release_id")
-        # Ne publie pas les fiches provisoires, sans identification ET sans pochette.
+        # La capture est visible immédiatement, même si l'album reste incertain.
+        # These labels exist only in the view; they are not invented metadata.
         if not (r.get("Titre") and r.get("Artiste")):
             pending += 1
-            continue
+            if not r.get('Photos personnelles') or not cover:
+                continue
         verified = bool(release and str(release).isdigit() and r.get("Statut") == "Identifié")
         documented = verified or bool(r.get("Discogs référence release_id"))
         item = {
-            "b": bac, "o": int(pos), "t": r["Titre"], "a": r["Artiste"],
+            "b": bac, "o": int(pos), "t": r.get('Titre') or 'Identification en cours', "a": r.get('Artiste') or 'À identifier',
             "y": str((r.get("Année") or "") if verified else r.get("Année de l'album") or ""),
             "f": r.get("Famille") or "À classer", "r": r.get("Réputation sonore") or "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x),
@@ -111,7 +121,7 @@ def main():
             # Actualiser les fiches enrichies par GitHub sans retirer les entrées historiques.
             pos = by_key[key]
             old = existing[pos]
-            if bac == 'B-08' or r.get('Enrichissement automatique', '').startswith('metadata-v2'):
+            if bac == 'B-08' or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v2'):
                 metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']
