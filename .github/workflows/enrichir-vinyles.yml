@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
-      group: importation-photos-vinyles
+      group: gestion-bacs-vinyles
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -189,6 +189,9 @@ jobs:
 
   controle:
     name: Contrôle des résultats
+    concurrency:
+      group: gestion-bacs-vinyles
+      cancel-in-progress: false
     needs: [importer, enrichir]
     if: ${{ always() && needs.importer.result == 'success' }}
     runs-on: ubuntu-latest

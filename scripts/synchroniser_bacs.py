@@ -84,7 +84,7 @@ def main(migrate=False):
         if prior:
             request_json(f'{API}/{BASE}/{BACS}/' + prior['id'], headers, {'fields': fields})
         else:
-            request_json(f'{API}/{BASE}/{BACS}', headers, {'records': [{'fields': {'Bac': code, **fields}}]}, method='POST')
+            request_json(f'{API}/{BASE}/{BACS}', headers, {'performUpsert': {'fieldsToMergeOn': ['Bac']}, 'records': [{'fields': {'Bac': code, **fields}}]}, method='PATCH')
         print(f'{code}: {fields["Audit de clôture"]}', flush=True)
 
 if __name__ == '__main__':
