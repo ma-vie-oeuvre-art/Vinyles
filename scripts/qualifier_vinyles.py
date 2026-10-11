@@ -11,7 +11,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 def norm(text):
-    return re.sub(r'[^A-Z0-9]', '', unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode().upper())
+    from reconnaitre_albums import words
+    return ''.join(words(text))
 
 def album_norm(text):
     # Descripteurs typographiques du recto, pas variantes de catalogue.

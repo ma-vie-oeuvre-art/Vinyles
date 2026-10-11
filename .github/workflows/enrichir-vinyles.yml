@@ -74,7 +74,7 @@ jobs:
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-bul
           python -m pip install --disable-pip-version-check Pillow
           python -m py_compile scripts/lire_pochettes.py scripts/enrichir_vinyles.py
       - name: Extraire le texte des pochettes dans Airtable

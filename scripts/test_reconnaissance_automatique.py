@@ -65,3 +65,10 @@ series={'Transcription source':"[OCR neural texte] BRUITS | DE LA TIE N' 3 | SPO
 assert not c.printed_number_matches(series,{'titre':'Audio-Camera - Bruits De La Nature N° 3 : Animaux Sauvages - Animaux Domestiques'})
 assert c.printed_number_matches(series,{'titre':'Audio-Camera - Bruits De La Vie N° 3 : Sports, Chasse, Guerre, Signaux, Sonneries'})
 print('Titres de séries distinctes vérifiés')
+
+from reconnaitre_albums import words, supported
+from qualifier_vinyles import norm
+assert words('Спас Джонев') == ['SPAS', 'DZHONEV']
+assert supported('Спас Джонев Рецитал', 'Спас Джонев', 'Рецитал')
+assert norm('На гости на Бяло Сладко') != norm('Друг албум')
+print('Lecture et comparaison des titres bulgares vérifiées')

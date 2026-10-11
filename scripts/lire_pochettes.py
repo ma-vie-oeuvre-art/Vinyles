@@ -45,7 +45,7 @@ def records(token):
         if not offset:
             return
 
-def scan(url):
+def scan(url, languages='eng+fra'):
     if isinstance(url, Path):
         data = url.read_bytes()
     else:
@@ -65,7 +65,7 @@ def scan(url):
         f.flush()
         outputs=[]
         for mode in ('3','11'):
-            p = subprocess.run(["tesseract", f.name, "stdout", "-l", "eng+fra", "--psm", mode],
+            p = subprocess.run(["tesseract", f.name, "stdout", "-l", languages, "--psm", mode],
                 text=True, capture_output=True, timeout=35, env=OCR_ENV)
             if p.returncode: raise RuntimeError("OCR failed")
             outputs.append(p.stdout)
@@ -80,7 +80,7 @@ def scan(url):
                 with tempfile.NamedTemporaryFile(suffix='.png') as zone:
                     crop.save(zone.name)
                     for mode in ('6', '11'):
-                        p = subprocess.run(['tesseract', zone.name, 'stdout', '-l', 'eng', '--psm', mode],
+                        p = subprocess.run(['tesseract', zone.name, 'stdout', '-l', languages if 'bul' in languages else 'eng', '--psm', mode],
                             text=True, capture_output=True, timeout=35, env=OCR_ENV)
                         if p.returncode: raise RuntimeError('OCR zone failed')
                         outputs.append(p.stdout)
@@ -111,7 +111,8 @@ def main():
         if (not image and not local) or f.get("Discogs release_id") or f.get("Ne pas retraiter"):
             continue
         existing = f.get("Transcription source", "")
-        if "[OCR zones v3]" in existing:
+        needs_bulgarian = bool(re.search(r'[\u0400-\u04ff]', existing)) and '[OCR bul v1]' not in existing
+        if "[OCR zones v3]" in existing and not needs_bulgarian:
             continue
         if len(selected) >= LIMIT:
             break
@@ -123,7 +124,9 @@ def main():
         row, source = item
         started = time.monotonic()
         try:
-            return row, scan(source), None, time.monotonic() - started
+            text = row.get('fields', {}).get('Transcription source', '')
+            languages = 'bul+eng' if re.search(r'[\u0400-\u04ff]', text) else 'eng+fra'
+            return row, scan(source, languages), None, time.monotonic() - started
         except Exception as exc:
             return row, None, exc, time.monotonic() - started
 
@@ -141,6 +144,8 @@ def main():
             # Keep prior transcriptions; OCR is a clue, never a verified identification.
             marker = '[OCR zones v3]' if '[OCR pochette]' in existing else '[OCR pochette]'
             source = (existing + "\n" if existing else "") + marker + " " + text
+            if re.search(r'[\u0400-\u04ff]', existing):
+                source += '\n[OCR bul v1] lecture cyrillique effectuée'
             if marker == '[OCR pochette]': source += '\n[OCR zones v3] lecture complète effectuée'
             source = source[:90000]
             if not DRY_RUN:

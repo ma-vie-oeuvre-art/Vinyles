@@ -11,6 +11,10 @@ import urllib.parse
 from enrichir_vinyles import request_json, API, BASE, TABLE
 
 def words(text):
+    # Keep Cyrillic evidence instead of silently dropping every title letter.
+    alphabet = dict(zip('АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ',
+                        ['A','B','V','G','D','E','ZH','Z','I','Y','K','L','M','N','O','P','R','S','T','U','F','H','TS','CH','SH','SHT','A','','YU','YA']))
+    text = ''.join(alphabet.get(c, c) for c in str(text).upper())
     text = unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode().upper()
     return re.findall(r'[A-Z0-9]+', text)
 
