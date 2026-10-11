@@ -333,7 +333,7 @@ def main():
             report=f.get(REPORT,'')
             expired='Prochaine recherche automatique :' in report and retry_due(report, 'Prochaine recherche automatique')
             needed = os.getenv('DERIVED_ONLY','0')!='1' and (not report.startswith(signature) or expired) and (effective.get('Discogs release_id') or validated_reference(effective) or (effective.get('Titre') and effective.get('Artiste')))
-            if needed and fetched < 40:
+            if needed and fetched < max(1, int(os.getenv('METADATA_BATCH_SIZE', '40'))):
                 release=resolve(effective,dg,cache); fetched+=1
                 if release:
                     updates.update(metadata(effective,release,dg,cache))

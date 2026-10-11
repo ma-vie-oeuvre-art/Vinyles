@@ -89,6 +89,13 @@ jobs:
           path: ${{ runner.temp }}/vinyles-search-cache
           key: discogs-cache-v2-${{ runner.os }}-${{ github.run_id }}
           restore-keys: discogs-cache-v2-${{ runner.os }}-
+      - name: Réparer les métadonnées et positions avant les lectures longues
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          METADATA_BATCH_SIZE: '12'
+          DRY_RUN: '0'
+        run: python scripts/completer_metadonnees.py
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
