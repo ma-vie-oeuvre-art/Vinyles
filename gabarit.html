@@ -896,9 +896,25 @@ function ouvrir(i){
     voile.classList.remove('on'); rendre();
     window.scrollTo({top:0,behavior:'smooth'}); };
   zFa.appendChild(bArt);
-  const d=[['Label et n°', r.k||'—'],['Famille',r.f]];
-  if(r.y) d.push(['Année',r.y]);
-  if(r.r) d.push(['Réputation',r.r]);
+  // Fiche lisible : des faits, pas de journal technique. Les diagnostics restent dans Airtable.
+  const prix=v=>v==null||v===''?'':(Math.round(v*100)/100).toFixed(2).replace('.',',')+' $';
+  const propre=t=>(''+(t||'')).replace(/\[url=[^\]]*\]([^\[]*)\[\/url\]/g,'$1').replace(/\[[rm]=?\d+\]/g,'')
+    .split('\n').map(x=>x.trim()).filter(x=>x && !/^https?:\/\//.test(x)
+    && !/^(Pressage identifié|Référence uniquement|INDICATIF|Version de référence|Montants en CAD|prix affiché|Very Good Plus|Mint \(M\)|Données documentées|aucune annonce|Notes de la version Discogs|Labelography|Made in|Manufactured|Distributed|Printed|Marketed|Courtesy|℗|©)/i.test(x)
+    && !/courtesy of/i.test(x)).join(' · ');
+  const d=[['Label et n°', r.k||'—']];
+  const edition=[r.y, r.pa, r.fp].filter(Boolean).join(' · ');
+  if(edition) d.push([r.d?'Pressage':'Édition', edition]);
+  d.push(['Famille', r.f]);
+  if(r.np!=null) d.push(['Plages', r.np]);
+  if(r.s) d.push(['Statut', r.s==='Identifié' ? 'Pressage identifié' : r.s==='Pressage à confirmer' ? 'Album identifié — pressage exact à confirmer' : r.s]);
+  const cote=[r.m!=null&&r.m!==''?'VG+ '+prix(r.m):'', r.x!=null&&r.x!==''?'Mint '+prix(r.x):''].filter(Boolean).join(' · ');
+  if(cote) d.push([r.indicatif?'Cote indicative':'Cote Discogs', cote]);
+  const comm=[r.h!=null?r.h+' le possèdent':'', r.w!=null?r.w+' le recherchent':'', r.n?'note '+(''+r.n).replace('.',',')+' / 5':''].filter(Boolean).join(' · ');
+  if(comm) d.push(['Communauté', comm]);
+  const tech=propre(r.technique); if(tech) d.push(['Enregistrement', tech]);
+  const hist=propre(r.historique); if(hist) d.push(['Histoire', hist]);
+  if(r.r) d.push(['Réputation', r.r]);
   document.getElementById('fd').innerHTML=d.map(([k,v])=>'<dt>'+k+'</dt><dd>'+esc(''+v)+'</dd>').join('');
   const lien=document.getElementById('fl');
   lien.style.display = r.d ? '' : 'none';

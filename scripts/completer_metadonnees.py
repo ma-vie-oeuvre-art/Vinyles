@@ -374,7 +374,9 @@ def metadata(f, release, headers, cache):
     details=[f"https://www.discogs.com/release/{rid}", 'Référence uniquement.' if not confirmed else 'Pressage identifié.', 'Label : '+', '.join(x.get('name','') for x in release.get('labels',[])), 'Catalogue : '+', '.join(x.get('catno','') for x in release.get('labels',[])), 'Pays : '+str(release.get('country') or 'non documenté'), 'Année de cette version : '+str(release.get('year') or 'non documentée'), 'Format : '+str(physical_format(release) or 'non documenté')]
     out['Version de référence — détails']='\n'.join(details)
     for field,value in recording_metadata(release,confirmed).items():
-        if not f.get(field): out[field]=value
+        # Un texte qui décrit une AUTRE version (référence changée) est remplacé, jamais conservé.
+        stale = re.search(r'discogs\.com/release/(\d+)', str(f.get(field) or ''))
+        if not f.get(field) or (stale and stale[1] != rid): out[field]=value
     # Ne pas refaire les prix historiques déjà présents : priorité aux lacunes.
     if not f.get("Date de l'estimation") or f.get('Bac')=='B-08' or any(f.get(k) is None for k in ['Valeur minimale','Prix suggéré VG+ (Discogs)','Prix suggéré Mint (Discogs)']):
         out.update(market_metadata(f,release,headers,cache,confirmed))
