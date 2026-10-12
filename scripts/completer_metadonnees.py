@@ -186,22 +186,35 @@ def flatten_tracks(items, work=''):
         result.append(item)
     return result
 
+COUNTRY_STYLES = {'Country', 'Country Rock', 'Bluegrass', 'Honky Tonk', 'Nashville Sound', 'Countrypolitan', 'Cajun'}
+
 def classification(release):
+    """Famille principale + familles secondaires.
+    Règles : la chanson (style Chanson) est Francophone; la country n'est ni Traditionnel / Monde
+    ni Jazz (elle reste Général, avec l'étiquette Country); un genre Jazz accolé à Pop/Rock sur une
+    fiche country est une erreur Discogs et ne décide pas de la famille."""
     genres = set(release.get('genres', []))
     styles = set(release.get('styles', []))
+    country = bool(styles & COUNTRY_STYLES)
+    chanson = 'Chanson' in styles
     tags = []
+    if styles & {'Christmas'}: tags.append('Noël')
+    if styles & {'Soundtrack', 'Score', 'Musical'}: tags.append('Bandes sonores')
+    if chanson: tags.append('Francophone')
     for genre, family in [('Classical','Classique'),('Jazz','Jazz'),('Rock','Pop-rock'),('Pop','Pop-rock'),('Electronic','Électro / Dance'),('Funk / Soul','Funk / Soul'),('Folk, World, & Country','Traditionnel / Monde'),('Blues','Blues'),('Latin','Latin'),('Reggae','Reggae'),('Hip Hop','Hip-hop')]:
-        if genre in genres and family not in tags: tags.append(family)
-    if styles & {'Soundtrack','Score','Musical'}: tags.insert(0, 'Bandes sonores')
-    if styles & {'Christmas'}: tags.insert(0, 'Noël')
-    if 'Chanson' in styles: tags.append('Chanson')
-    if 'Country' in styles: tags.append('Country')
+        if genre not in genres or family in tags: continue
+        if country and family in ('Jazz', 'Traditionnel / Monde'): continue
+        if chanson and family == 'Traditionnel / Monde': continue
+        tags.append(family)
+    if chanson: tags.append('Chanson')
+    if country: tags.append('Country')
     if 'Non-Music' in genres and styles & {'Comedy','Spoken Word'}: tags.append('Parlé et humour')
     descriptions = {d for fmt in release.get('formats', []) for d in fmt.get('descriptions', [])}
     if 'Compilation' in descriptions: tags.append('Compilation')
     if 'Live' in styles: tags.append('Enregistrement public')
     allowed = {'Classique','Noël','Bandes sonores','Francophone','Jazz','Pop-rock','Électro / Dance','Funk / Soul','Traditionnel / Monde'}
-    return next((x for x in tags if x in allowed), 'Général'), list(dict.fromkeys(tags)) or ['Général']
+    primary = 'Général' if country and not chanson else next((x for x in tags if x in allowed), 'Général')
+    return primary, list(dict.fromkeys(tags)) or ['Général']
 
 def physical_format(release):
     formats = release.get('formats', [])

@@ -9,6 +9,11 @@ on:
       - 'inbox/**'
       - 'photos/**'
   workflow_dispatch:
+    inputs:
+      recalculer_familles:
+        description: 'Recalculer Famille et Familles des bacs B-08 et suivants'
+        type: boolean
+        default: false
   schedule:
     - cron: '*/15 * * * *'
 permissions:
@@ -96,6 +101,12 @@ jobs:
           METADATA_BATCH_SIZE: '100'
           DRY_RUN: '0'
         run: python scripts/inspecter_etape.py scripts/completer_metadonnees.py
+      - name: Recalculer les familles (sur demande)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.recalculer_familles }}
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: python scripts/inspecter_etape.py scripts/recalculer_familles.py
       - name: Récupérer les pochettes confirmées de tous les bacs
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
