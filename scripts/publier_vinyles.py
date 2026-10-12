@@ -4,6 +4,8 @@ import json
 import os
 import re
 import sys
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -13,6 +15,60 @@ TABLE = "tblcqsKKwNW28bMSE"
 MARKER = "const D = /*__DONNEES__*/"
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "index.html"
+
+def durable_image(url, identity):
+    """Copy image bytes into the published site, without external dependencies."""
+    if not url:
+        return None
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.scheme:
+        local = (ROOT / urllib.parse.unquote(url)).resolve()
+        if ROOT.resolve() in local.parents and local.is_file():
+            return local.relative_to(ROOT.resolve()).as_posix()
+        raise ValueError('Image locale absente : ' + url)
+    if parsed.scheme != 'https':
+        raise ValueError('Source image non HTTPS')
+    key = hashlib.sha256(identity.encode()).hexdigest()[:32]
+    directory = ROOT / 'covers'
+    for suffix in ('.jpg', '.png', '.webp'):
+        cached = directory / (key + suffix)
+        if cached.is_file() and cached.stat().st_size:
+            return cached.relative_to(ROOT).as_posix()
+    request = urllib.request.Request(url, headers={'User-Agent': 'Vinyles-Catalogue/1.0'})
+    with urllib.request.urlopen(request, timeout=25) as response:
+        data = response.read(20 * 1024 * 1024 + 1)
+    if len(data) > 20 * 1024 * 1024:
+        raise ValueError('Image trop volumineuse')
+    if data.startswith(b'\xff\xd8\xff'):
+        suffix = '.jpg'
+    elif data.startswith(b'\x89PNG\r\n\x1a\n'):
+        suffix = '.png'
+    elif data.startswith(b'RIFF') and data[8:12] == b'WEBP':
+        suffix = '.webp'
+    else:
+        raise ValueError('La source ne contient pas une image valide')
+    directory.mkdir(exist_ok=True)
+    destination = directory / (key + suffix)
+    temporary = destination.with_suffix(suffix + '.tmp')
+    temporary.write_bytes(data)
+    temporary.replace(destination)
+    return destination.relative_to(ROOT).as_posix()
+
+def prepare_images(fields):
+    cover, back, personal = site_images(fields)
+    for side, url, field in [('front', cover, 'Front Cover'), ('back', back, 'Back Cover')]:
+        attachments = fields.get(field) or (fields.get('Photos personnelles') if side == 'front' else []) or []
+        # Fresh attachment URLs are used only during download, never in the HTML.
+        remote = bool(url and urllib.parse.urlparse(url).scheme)
+        attachment = attachments[0] if attachments and remote else {}
+        source = attachment.get('url') or url
+        identity = attachment.get('id') or source or ''
+        stable = durable_image(source, identity) if source else None
+        if side == 'front':
+            cover = stable
+        else:
+            back = stable
+    return cover, back, personal
 
 def site_images(fields):
     """Publish durable source URLs, never expiring Airtable download links."""
@@ -81,9 +137,11 @@ def main():
         raise ValueError("Doublons dans le catalogue historique : publication interrompue")
     history = [dict(r) for r in existing]
     rows = fetch_rows(token)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        prepared = list(pool.map(prepare_images, rows))
     added, pending, updated = [], 0, 0
     seen = set()
-    for r in rows:
+    for r, images in zip(rows, prepared):
         bac, pos = r.get("Bac"), r.get("Ordre dans le bac")
         if not bac or not isinstance(pos, (int, float)) or int(pos) != pos:
             if bac == 'B-08':
@@ -93,7 +151,7 @@ def main():
         if key in seen:
             raise ValueError(f"Position Airtable dupliquée : {key}; site inchangé")
         seen.add(key)
-        cover, back, personal = site_images(r)
+        cover, back, personal = images
         release = r.get("Discogs release_id")
         # La capture est visible immédiatement, même si l'album reste incertain.
         # These labels exist only in the view; they are not invented metadata.
@@ -121,6 +179,16 @@ def main():
             # Actualiser les fiches enrichies par GitHub sans retirer les entrées historiques.
             pos = by_key[key]
             old = existing[pos]
+            # Repair images for every historical row, even without metadata changes.
+            repaired = {**old}
+            if cover:
+                repaired.update(th=cover, rc=cover)
+            if back:
+                repaired['vs'] = back
+            if repaired != old:
+                existing[pos] = repaired
+                updated += 1
+            old = repaired
             if bac == 'B-08' or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v'):
                 metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
                 if r.get('Famille'):

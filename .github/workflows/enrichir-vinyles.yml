@@ -213,7 +213,7 @@ jobs:
     concurrency:
       group: publication-vinyles
       cancel-in-progress: false
-    timeout-minutes: 5
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -233,11 +233,11 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             python scripts/publier_vinyles.py
-            if git diff --quiet -- index.html; then
+            git add index.html covers/
+            if git diff --cached --quiet; then
               echo "Catalogue déjà synchronisé"
               exit 0
             fi
-            git add index.html
             git commit -m "Synchroniser automatiquement le catalogue Airtable"
             if git push origin HEAD:main; then
               exit 0
