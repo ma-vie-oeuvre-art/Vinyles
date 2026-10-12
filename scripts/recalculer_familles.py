@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recalcule Famille et Familles des bacs B-08 et suivants avec la règle de classification courante.
+"""Recalcule Famille et Familles des bacs B-08 et suivants, et comble Label et Année depuis la référence Discogs.
 
 Lancé sur demande (workflow_dispatch, entrée « recalculer_familles »), pas à chaque passage :
 il relit chaque référence Discogs. Les fiches gelées (Ne pas retraiter) ne sont pas touchées.
@@ -7,7 +7,7 @@ il relit chaque référence Discogs. Les fiches gelées (Ne pas retraiter) ne so
 import os
 import urllib.parse
 
-from completer_metadonnees import request_json, classification, API, BASE, TABLE, RID
+from completer_metadonnees import request_json, classification, clean_name, API, BASE, TABLE, RID
 
 
 def bac_number(code):
@@ -49,11 +49,16 @@ def main():
                 updates['Famille'] = family
             if sorted(f.get('Familles') or []) != sorted(tags):
                 updates['Familles'] = tags
+            release = cache[rid]
+            if not f.get('Label') and release.get('labels'):
+                updates['Label'] = clean_name(release['labels'][0].get('name'))
+            if not f.get('Année') and release.get('year'):
+                updates['Année'] = release['year']
             if updates:
                 if os.getenv('DRY_RUN', '0') != '1':
                     request_json(endpoint + '/' + row['id'], at, {'fields': updates, 'typecast': True})
                 changed += 1
-                print(f"{f.get('Bac')} rang {f.get('Ordre dans le bac')} — {f.get('Titre')} : {f.get('Famille')} → {family}; {tags}")
+                print(f"{f.get('Bac')} rang {f.get('Ordre dans le bac')} — {f.get('Titre')} : {updates}")
         except Exception as exc:
             errors += 1
             print(f"{row['id']} : échec {type(exc).__name__}: {exc}")

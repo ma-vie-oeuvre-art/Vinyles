@@ -242,6 +242,26 @@ def physical_format(release):
     if 'LP' in desc or '33 ⅓ RPM' in desc: return '33 tours'
     return None
 
+def clean_name(name):
+    """Forme lisible d'un nom Discogs : « Shadows, The » → « The Shadows », « Re-Flex (2) » → « Re-Flex »."""
+    if not name: return name
+    name = re.sub(r'\s\(\d+\)', '', str(name)).replace('*', '')
+    name = re.sub(r'(^|, )([^,]+?), The(?=,|$)', r'\1The \2', name)
+    return re.sub(r'\s{2,}', ' ', name).strip()
+
+def bac_number(code):
+    try: return int(str(code).split('-')[-1])
+    except ValueError: return 0
+
+def cle(f):
+    """Convention de la base (bacs B-01 à B-07) : « Label Catno ». Sans catno lu : « Label Titre »."""
+    label, catno, title = (str(f.get(k) or '').strip() for k in ('Label', 'N° catalogue', 'Titre'))
+    parts = [label, catno] if catno else [label, title]
+    key = ' '.join(x for x in parts if x)
+    if not key and f.get('Bac') and isinstance(f.get('Ordre dans le bac'), (int, float)):
+        key = f"{f['Bac']}-{int(f['Ordre dans le bac']):03}"
+    return key
+
 def derived(row, totals):
     f = row['fields']; out = restore_documented_fields(f)
     bac, rank = f.get('Bac'), f.get('Ordre dans le bac')
@@ -252,6 +272,13 @@ def derived(row, totals):
             stamp = datetime.now(ZoneInfo('America/Toronto')).date().isoformat()
             event = f'{stamp} — emplacement observé : {bac}, rang {int(rank)} / {totals[bac]}' if not previous_bac else f'{stamp} — déplacement observé : {previous_bac}, rang {previous_rank} → {bac}, rang {int(rank)} / {totals[bac]}'
             out.update({'Bac précédent': bac, 'Rang précédent': int(rank), 'Historique de rangement': '\n'.join(x for x in [f.get('Historique de rangement'), event] if x)})
+    if bac_number(bac) >= 8:
+        if f.get('Artiste') and clean_name(f['Artiste']) != f['Artiste']:
+            out['Artiste'] = clean_name(f['Artiste'])
+        if f.get('Label') and clean_name(f['Label']) != f['Label']:
+            out['Label'] = clean_name(f['Label'])
+        key = cle({**f, **out})
+        if key: out['Clé'] = key
     if not f.get('Date de saisie') and row.get('createdTime'):
         out['Date de saisie'] = row['createdTime'][:10]
     if not f.get('Indice CDU principal'):
@@ -308,7 +335,7 @@ def metadata(f, release, headers, cache):
         out.update({RID: rid, REF: 'https://www.discogs.com/release/' + rid})
     if (not f.get('Titre') or automatic) and release.get('title'): out['Titre']=release['title']
     if not f.get('Artiste') or automatic:
-        artist=release.get('artists_sort') or ', '.join(a.get('name','') for a in release.get('artists',[]))
+        artist=clean_name(release.get('artists_sort') or ', '.join(a.get('name','') for a in release.get('artists',[])))
         if artist: out['Artiste']=artist
     canonical = re.findall(r'\[identite-canonique-v\d+:(\d+)\]', f.get('Transcription source', ''))
     if automatic and not confirmed and canonical and canonical[-1] == rid:
@@ -327,8 +354,10 @@ def metadata(f, release, headers, cache):
         master = cache[key]
         if master.get('year'): out["Année de l'album"] = int(master['year'])
         out[REF] = f'https://www.discogs.com/master/{master_id}'
+    # Convention B-01 à B-07 : Label et Année viennent de la version de référence, confirmée ou non.
+    if not f.get('Label') and release.get('labels'): out['Label'] = clean_name(release['labels'][0].get('name'))
+    if release.get('year') and not f.get('Année'): out['Année'] = release['year']
     if confirmed:
-        if release.get('year') and not f.get('Année'): out['Année'] = release['year']
         if release.get('country') and not f.get('Pays du pressage'): out['Pays du pressage'] = release['country']
         fmt = physical_format(release)
         if fmt and not f.get('Format physique'): out['Format physique'] = fmt

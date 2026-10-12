@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       recalculer_familles:
-        description: 'Recalculer Famille et Familles des bacs B-08 et suivants'
+        description: 'Recalculer familles, label et année des bacs B-08 et suivants'
         type: boolean
         default: false
   schedule:
