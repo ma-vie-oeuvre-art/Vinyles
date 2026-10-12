@@ -165,7 +165,7 @@ def main():
             "b": bac, "o": int(pos), "t": r.get('Titre') or 'Identification en cours', "a": r.get('Artiste') or 'À identifier',
             "y": str((r.get("Année") or "") if verified else r.get("Année de l'album") or ""),
             "f": r.get("Famille") or "À classer", "r": r.get("Réputation sonore") or "", "k": " ".join(
-                x for x in [r.get("Label"), r.get("N° catalogue")] if x),
+                x for x in [r.get("Label"), r.get("N° catalogue")] if x), "l": r.get("Label") or "",
             "d": str(release) if verified else "", "th": cover, "rc": cover,
             "vs": back, "n": r.get("Note Discogs (sur 5)") if documented else None, "v": r.get("Valeur minimale") if documented else None, "m": r.get("Prix suggéré VG+ (Discogs)") if documented else None, "x": r.get("Prix suggéré Mint (Discogs)") if documented else None,
             "h": r.get("Possédé par (Discogs)") if documented else None, "w": r.get("Recherché par (Discogs)") if documented else None, "no": r.get("Nombre de notes (Discogs)") if documented else None, "ev": r.get("Exemplaires en vente (Discogs)") if documented else None,
@@ -185,12 +185,15 @@ def main():
                 repaired.update(th=cover, rc=cover)
             if back:
                 repaired['vs'] = back
+            # Le label seul alimente le menu « Label » pour tous les bacs, historiques compris.
+            if item.get('l') and repaired.get('l') != item['l']:
+                repaired['l'] = item['l']
             if repaired != old:
                 existing[pos] = repaired
                 updated += 1
             old = repaired
             if synced(bac) or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v'):
-                metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
+                metadata = {name: item[name] for name in ('t', 'a', 'k', 'l', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']
                 metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Enrichissement automatique') or r.get('Diagnostic', ''), 'photo': personal})
