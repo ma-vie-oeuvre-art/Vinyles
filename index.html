@@ -297,6 +297,8 @@ footer a{color:var(--poussiere)}
   text-align:left;border-bottom:1px dashed rgba(255,255,255,.3);}
 .fa-lien:hover{border-bottom-color:currentColor}
 
+.legende .tendance{margin:.3rem 0 0;font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;color:#8FA86B}
+.legende .tendance.demande{color:#D4A64A}
 /* ── PRISE DE SON ─────────────────────────────────────────── */
 .son-noms{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:0 0 26px}
 .son-palier{margin:0 0 34px}
@@ -335,6 +337,8 @@ footer a{color:var(--poussiere)}
       <option value="valeur">Valeur, du plus coté</option>
       <option value="recherche">Les plus recherchés</option>
       <option value="rare">Les plus rares</option>
+      <option value="hausse">Valeur estimée en hausse</option>
+      <option value="demande">Demande en progression</option>
     </select>
     <button class="pige" id="pige">Pige un disque</button>
   </div>
@@ -612,6 +616,9 @@ function filtrer(){
     k==='valeur'?(b.m||0)-(a.m||0):
     k==='recherche'?(b.w||0)-(a.w||0):
     k==='rare'?((a.h||1e9)-(b.h||1e9)):
+    // Tendances : un disque sans signal va en fin de liste, jamais compté comme zéro.
+    k==='hausse'?((b.hv?b.hv[1]:-1e9)-(a.hv?a.hv[1]:-1e9)):
+    k==='demande'?((b.hd?b.hd[0]:-1e9)-(a.hd?a.hd[0]:-1e9)):
     a.b.localeCompare(b.b)|| a.o-b.o);
 }
 
@@ -706,6 +713,8 @@ function rendre(){
       '<p class="k">'+esc(r.k)+'</p>'+
       (r.s?'<p class="k">'+esc(r.s)+'</p>':'')+
       (r.h!=null&&r.w!=null&&r.h<r.w?'<p class="rare">recherché</p>':'')+
+      (r.hv&&r.hv[1]>=5?'<p class="tendance">▲ valeur +'+esc(arg(r.hv[0]))+' ('+r.hv[1].toLocaleString('fr-CA')+' %) en '+r.hv[2]+' j</p>':'')+
+      (r.hd?'<p class="tendance demande">demande en progression · +'+r.hd[0]+' recherchent, '+r.hd[1]+' offres</p>':'')+
       (r.m?'<p class="v">'+arg(r.m)+' <span class="g">VG+'+(r.indicatif?' · indicatif':'')+'</span>'+
             (r.x?' <span class="g">· '+arg(r.x)+' Mint</span>':'')+'</p>'
           :'<p class="v vide">pas d\'estimation</p>')+
@@ -1031,6 +1040,9 @@ function ouvrir(i){
   if(cote) d.push([r.indicatif?'Cote indicative':'Cote Discogs', cote]);
   const comm=[r.h!=null?r.h+' le possèdent':'', r.w!=null?r.w+' le recherchent':'', r.n?'note '+(''+r.n).replace('.',',')+' / 5':''].filter(Boolean).join(' · ');
   if(comm) d.push(['Communauté', comm]);
+  // Deux signaux distincts : une valeur estimée qui monte n'est pas une demande qui monte.
+  if(r.hv) d.push(['Valeur estimée', (r.hv[0]>=0?'+':'')+arg(r.hv[0])+' ('+(r.hv[1]>=0?'+':'')+r.hv[1].toLocaleString('fr-CA')+' %) en '+r.hv[2]+' jours, prix suggéré VG+']);
+  if(r.hd) d.push(['Demande', '+'+r.hd[0]+' personnes le recherchent, '+r.hd[1]+' offres en vente, en '+r.hd[2]+' jours — signal à surveiller, pas une hausse confirmée']);
   const tech=propre(r.technique); if(tech) d.push(['Enregistrement', tech]);
   const hist=propre(r.historique); if(hist) d.push(['Histoire', hist]);
   if(sonNoms(r).length) d.push(['Chaîne sonore', sonNoms(r).join(' · ')+(r.pr?' — '+r.pr.toLowerCase():'')]);

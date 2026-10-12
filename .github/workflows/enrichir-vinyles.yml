@@ -148,9 +148,47 @@ jobs:
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
         run: python scripts/inspecter_etape.py scripts/verifier_resultat_automatique.py
+  valeurs:
+    name: Rafraîchissement des valeurs
+    # Rotation hebdomadaire + file quotidienne des disques en mouvement; historique daté versionné.
+    needs: controle
+    if: ${{ !cancelled() && needs.controle.result == 'success' }}
+    concurrency:
+      group: valeurs-vinyles
+      cancel-in-progress: false
+    timeout-minutes: 12
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Relever les chiffres de marché
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          VALEURS_LOT: '15'
+          VALEURS_LOT_PRIORITAIRE: '10'
+          DRY_RUN: '0'
+        run: python scripts/inspecter_etape.py scripts/rafraichir_valeurs.py
+      - name: Versionner l'historique des relevés
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add historique/ state/rotation_valeurs.json
+          if git diff --cached --quiet; then echo "Aucun relevé"; exit 0; fi
+          git commit -m "Relevés de marché Discogs"
+          for tentative in 1 2 3 4; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1
   publication:
     name: Publication
-    needs: controle
+    needs: [controle, valeurs]
     if: ${{ !cancelled() && needs.controle.result == 'success' }}
     concurrency:
       group: publication-vinyles

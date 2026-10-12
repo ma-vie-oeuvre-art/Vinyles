@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synchronisation Airtable -> GitHub Pages, suppressions comprises pour le bac B-08."""
+"""Synchronisation Airtable -> GitHub Pages : Airtable fait foi pour tous les bacs (12 oct. 2026)."""
 import json
 import os
 import re
@@ -112,7 +112,7 @@ def fetch_rows(token):
         request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
         with urllib.request.urlopen(request, timeout=35) as response:
             page = json.load(response)
-        rows += [r["fields"] for r in page.get("records", [])]
+        rows += [{**r["fields"], "_id": r["id"]} for r in page.get("records", [])]
         cursor = page.get("offset")
         if not cursor:
             return rows
@@ -144,6 +144,7 @@ def main():
         raise ValueError("Doublons dans le catalogue historique : publication interrompue")
     history = [dict(r) for r in existing]
     rows = fetch_rows(token)
+    historique = lire_historique()
     with ThreadPoolExecutor(max_workers=8) as pool:
         prepared = list(pool.map(prepare_images, rows))
     added, pending, updated = [], 0, 0
@@ -170,7 +171,7 @@ def main():
         documented = verified or bool(r.get("Discogs référence release_id"))
         item = {
             "b": bac, "o": int(pos), "t": r.get('Titre') or 'Identification en cours', "a": r.get('Artiste') or 'À identifier',
-            "y": str((r.get("Année") or "") if verified else r.get("Année de l'album") or ""),
+            "y": str((r.get("Année") or "") if verified else r.get("Année de l'album") or r.get("Année") or ""),
             "f": r.get("Famille") or "À classer", "r": r.get("Réputation sonore") or "", "k": " ".join(
                 x for x in [r.get("Label"), r.get("N° catalogue")] if x), "l": r.get("Label") or "",
             "d": str(release) if verified else "", "th": cover, "rc": cover,
@@ -184,6 +185,8 @@ def main():
         }
         # Onglet « Prise de son » : chaîne sonore liée (table Prises de son), tous bacs confondus.
         item.update(prise_de_son(r))
+        # Tendances de marché depuis l'historique daté (scripts/rafraichir_valeurs.py).
+        item.update(tendances(historique.get(r.get("_id"), [])) if documented else {"hv": None, "hd": None})
         if key in by_key:
             # Actualiser les fiches enrichies par GitHub sans retirer les entrées historiques.
             pos = by_key[key]
@@ -198,7 +201,7 @@ def main():
             if item.get('l') and repaired.get('l') != item['l']:
                 repaired['l'] = item['l']
             # La chaîne sonore suit Airtable pour TOUS les bacs, historiques compris.
-            for cle in ('ps', 'pr'):
+            for cle in ('ps', 'pr', 'hv', 'hd'):
                 if item.get(cle):
                     repaired[cle] = item[cle]
                 else:
@@ -239,8 +242,63 @@ def main():
         print(f"SIMULATION : {len(added)} ajouts, {updated} mises à jour, {len(removed)} suppressions B-08, {pending} en attente")
         return 0
     SITE.write_text(rebuilt, encoding="utf-8")
-    print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08, {len(removed)} suppressions B-08. Les autres bacs conservés.")
+    print(f"Publication : {len(added)} ajouts, {updated} mises à jour (tous bacs), {len(removed)} suppressions B-08.")
     return 0
+
+HISTORIQUE = ROOT / "historique" / "valeurs"
+
+def lire_historique():
+    """{record_id: [relevés triés par date]} — une ligne JSON par relevé."""
+    h = {}
+    if HISTORIQUE.is_dir():
+        for fichier in sorted(HISTORIQUE.glob("*.jsonl")):
+            for ligne in fichier.read_text(encoding="utf-8").splitlines():
+                try:
+                    r = json.loads(ligne)
+                except ValueError:
+                    continue
+                h.setdefault(r.get("id"), []).append(r)
+    for v in h.values():
+        v.sort(key=lambda r: r.get("t", ""))
+    return h
+
+def tendances(releves, maintenant=None):
+    """Deux signaux distincts, calculés sur environ 30 jours :
+    hv = variation du prix suggéré VG+ [écart $, écart %, jours couverts];
+    hd = demande en progression [hausse des « recherché », baisse des offres, jours].
+    Il faut au moins 7 jours d'écart entre deux relevés comparables, sinon rien.
+    Une valeur absente n'est jamais comptée comme zéro : le relevé est simplement ignoré."""
+    from datetime import datetime, timedelta
+    if len(releves) < 2:
+        return {"hv": None, "hd": None}
+    def quand(r):
+        try:
+            return datetime.fromisoformat(r["t"])
+        except (KeyError, ValueError):
+            return None
+    dernier = releves[-1]
+    t1 = quand(dernier)
+    if not t1:
+        return {"hv": None, "hd": None}
+    rid = dernier.get("rid")
+    anciens = [r for r in releves[:-1] if r.get("rid") == rid and quand(r) and (t1 - quand(r)).days >= 7]
+    def repere(cle):
+        ok = [r for r in anciens if r.get(cle) is not None]
+        if not ok:
+            return None
+        avant_30 = [r for r in ok if (t1 - quand(r)).days >= 30]
+        return avant_30[-1] if avant_30 else ok[0]
+    hv = hd = None
+    a = repere("vg")
+    if a and dernier.get("vg") is not None and a["vg"]:
+        ecart = round(dernier["vg"] - a["vg"], 2)
+        hv = [ecart, round(100 * ecart / a["vg"], 1), (t1 - quand(a)).days]
+    b = repere("want")
+    if b and dernier.get("want") is not None and b.get("vente") is not None and dernier.get("vente") is not None:
+        dw, dv = dernier["want"] - b["want"], dernier["vente"] - b["vente"]
+        if dw > 0 and dv < 0:
+            hd = [dw, dv, (t1 - quand(b)).days]
+    return {"hv": hv, "hd": hd}
 
 RANG_REPUTATION = ["Référence historique", "Reconnu", "Non évalué"]
 
@@ -261,12 +319,12 @@ def prise_de_son(r):
     return {"ps": ordre, "pr": meilleure if meilleure != "Non évalué" else ""}
 
 def synced(bac):
-    """Bacs B-08 et suivants : Airtable fait foi, un champ vidé disparaît aussi du site.
-    Les bacs B-01 à B-07 (publiés par l'ancienne chaîne) gardent les valeurs historiques."""
-    try:
-        return int(str(bac).split('-')[-1]) >= 8
-    except ValueError:
-        return False
+    """Tous les bacs suivent la même chaîne : Airtable fait foi (décision du 12 oct. 2026).
+    Vérifié avant l'unification : titres, artistes, labels, catalogues, familles et années
+    des bacs B-01 à B-07 étaient identiques entre Airtable et le site (une seule exception,
+    B-04 rang 12). Les 161 « Pressage à confirmer » l'étaient déjà dans Airtable avant la
+    migration du 10 oct. : l'ancienne publication affichait leur release_id sans lire le statut."""
+    return bool(bac)
 
 if __name__ == "__main__":
     sys.exit(main())
