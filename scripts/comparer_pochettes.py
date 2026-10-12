@@ -223,7 +223,7 @@ def select():
         if not offset:
             break
     rows.sort(key=lambda row: (bool(row['fields'].get('Artiste') and row['fields'].get('Titre')), not any(marker in row['fields'].get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]']), row['fields'].get('Bac', ''), row['fields'].get('Ordre dans le bac', 0)))
-    rows = rows[:20]
+    rows = rows[:max(1, min(20, int(os.environ.get('VISUAL_BATCH_SIZE', '3'))))]
     SELECTION.write_text(json.dumps(rows), encoding='utf-8')
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
@@ -278,11 +278,25 @@ def compare(photo, reference, text_confirmed=False):
 def download(url):
     if not str(url).startswith('https://'):
         raise ValueError('URL de pochette invalide')
+    cache_dir = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-cover-cache'
+    cached = cache_dir / (hashlib.sha256(url.encode()).hexdigest() + '.jpg')
+    if cached.is_file() and time.time() - cached.stat().st_mtime < 7 * 86400:
+        return cached.read_bytes()
     proxy = 'https://images.weserv.nl/?url=' + urllib.parse.quote(url, safe='') + '&output=jpg&w=1100'
-    with urllib.request.urlopen(proxy, timeout=20) as response:
+    with urllib.request.urlopen(proxy, timeout=8) as response:
         data = response.read(5_000_001)
     if len(data) > 5_000_000:
         raise ValueError('Pochette trop volumineuse')
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    # Cache only successfully decoded images; a proxy error must remain retryable.
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as image:
+        image.verify()
+    import tempfile
+    with tempfile.NamedTemporaryFile(dir=cache_dir, delete=False) as output:
+        output.write(data)
+        temporary = Path(output.name)
+    temporary.replace(cached)
     return data
 
 def run():
@@ -361,7 +375,7 @@ def run():
 
         scores = []
         unavailable = 0
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, min(8, int(os.environ.get('VISUAL_WORKERS', '6'))))) as pool:
             for c, score, failure in pool.map(load, chosen):
                 if failure:
                     unavailable += 1
@@ -427,7 +441,7 @@ def run():
             master_candidates = sorted(masters.values(), key=priority, reverse=True)[:100]
             master_candidates = [c for c in master_candidates if c['cover_url'] not in urls]
             print('Albums prioritaires: ' + json.dumps([c['titre'] for c in master_candidates[:12]],ensure_ascii=False),flush=True)
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            with ThreadPoolExecutor(max_workers=max(1, min(8, int(os.environ.get('VISUAL_WORKERS', '6'))))) as pool:
                 for c, score, failure in pool.map(load, master_candidates):
                     if failure:
                         unavailable += 1
@@ -479,6 +493,8 @@ def run():
         elif unavailable:
             errors += 1
             print(f"{row['id']}: {unavailable} pochette(s) inaccessible(s); comparaison à reprendre automatiquement", flush=True)
+            request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': {
+                'Diagnostic': f.get('Diagnostic', '') + f'\nComparaison incomplète : {unavailable} image(s) inaccessible(s); reprise automatique.\n' + stamp + '\nRecherche visuelle suivante : ' + next_retry()}})
             continue
         else:
             updates['Diagnostic'] = f.get('Diagnostic', '') + f'\nComparaison automatique: {len(chosen)} visuels examinés, {len(groups)} album(s) visuellement concordant(s).\n' + stamp + '\nRecherche visuelle suivante : ' + next_retry(report=f.get('Diagnostic', ''))

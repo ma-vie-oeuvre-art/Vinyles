@@ -16,29 +16,32 @@ permissions:
 env:
   PYTHONUNBUFFERED: '1'
   OMP_THREAD_LIMIT: '1'
+  VISUAL_BATCH_SIZE: '3'
+  VISUAL_WORKERS: '6'
+  NEURAL_BATCH_SIZE: '4'
 jobs:
   coordonner:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Appliquer immédiatement les corrections du moteur
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/coordonner_traitements.py
+        run: python scripts/inspecter_etape.py scripts/coordonner_traitements.py
   importer:
     name: Capture et transfert
     needs: coordonner
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     concurrency:
       group: gestion-bacs-vinyles
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
       - name: Vérifier les mécanismes et protéger la publication
@@ -46,56 +49,58 @@ jobs:
           node --check worker/ingestion.mjs
           node --check worker/import-airtable.mjs
           python -m py_compile scripts/*.py
-          python scripts/verifier_securite.py
-          python scripts/test_importer_photos.py
+          python scripts/inspecter_etape.py scripts/verifier_securite.py
+          python scripts/inspecter_etape.py scripts/test_importer_photos.py
       - name: Importer les nouvelles photos sans attendre l’enrichissement
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: PHOTO_SOURCE_SHA="$(git rev-parse HEAD)" python scripts/importer_photos.py
+        run: PHOTO_SOURCE_SHA="$(git rev-parse HEAD)" python scripts/inspecter_etape.py scripts/importer_photos.py
       - name: Synchroniser les bacs et séparer les références non confirmées
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-        run: python scripts/synchroniser_bacs.py --migrate-references
+        run: python scripts/inspecter_etape.py scripts/synchroniser_bacs.py --migrate-references
   enrichir:
     name: Traitement automatique
     needs: importer
     concurrency:
       group: enrichissement-vinyles
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Vérifier les règles de reconnaissance automatique
         run: |
-          python scripts/test_importer_photos.py
-          python scripts/test_reconnaissance_automatique.py
-          python scripts/test_reprises_automatiques.py
-          python scripts/test_synchroniser_bacs.py
+          python scripts/inspecter_etape.py scripts/test_importer_photos.py
+          python scripts/inspecter_etape.py scripts/test_reconnaissance_automatique.py
+          python scripts/inspecter_etape.py scripts/test_reprises_automatiques.py
+          python scripts/inspecter_etape.py scripts/test_synchroniser_bacs.py
       - name: Vérifier la configuration
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
-        run: python scripts/verifier_configuration.py
+        run: python scripts/inspecter_etape.py scripts/verifier_configuration.py
       - name: Réutiliser les recherches et références Discogs récentes
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/vinyles-search-cache
-          key: discogs-cache-v2-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: discogs-cache-v2-${{ runner.os }}-
+          path: |
+            ${{ runner.temp }}/vinyles-search-cache
+            ${{ runner.temp }}/vinyles-cover-cache
+          key: discogs-cache-v3-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: discogs-cache-v3-${{ runner.os }}-
       - name: Réparer les métadonnées et positions avant les lectures longues
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
           METADATA_BATCH_SIZE: '12'
           DRY_RUN: '0'
-        run: python scripts/completer_metadonnees.py
+        run: python scripts/inspecter_etape.py scripts/completer_metadonnees.py
       - name: Installer le moteur de lecture des pochettes
         run: |
           sudo apt-get update -qq
@@ -109,17 +114,17 @@ jobs:
           OCR_WORKERS: '2'
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
-          python scripts/lire_pochettes.py
+          python scripts/inspecter_etape.py scripts/lire_pochettes.py
       - name: Reconnaître les albums depuis les photos
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
-        run: python scripts/reconnaitre_albums.py
+        run: python scripts/inspecter_etape.py scripts/reconnaitre_albums.py
       - name: Sélectionner automatiquement les pochettes encore incertaines
         id: neural
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-        run: python scripts/lire_pochettes_neural.py --select
+        run: python scripts/inspecter_etape.py scripts/lire_pochettes_neural.py --select
       - name: Réutiliser les modèles du second lecteur
         if: steps.neural.outputs.count != '0'
         uses: actions/cache@v4
@@ -137,18 +142,18 @@ jobs:
         if: steps.neural.outputs.count != '0'
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-        run: python scripts/lire_pochettes_neural.py
+        run: python scripts/inspecter_etape.py scripts/lire_pochettes_neural.py
       - name: Reprendre la reconnaissance avec les nouveaux indices
         if: steps.neural.outputs.count != '0'
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
-        run: python scripts/reconnaitre_albums.py
+        run: python scripts/inspecter_etape.py scripts/reconnaitre_albums.py
       - name: Préparer la comparaison des pochettes encore incertaines
         id: visuel
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-        run: python scripts/comparer_pochettes.py --select
+        run: python scripts/inspecter_etape.py scripts/comparer_pochettes.py --select
       - name: Installer la comparaison géométrique uniquement si nécessaire
         if: steps.visuel.outputs.count != '0'
         run: python -m pip install --disable-pip-version-check opencv-python-headless==5.0.0.93
@@ -157,7 +162,7 @@ jobs:
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
-        run: python scripts/comparer_pochettes.py
+        run: python scripts/inspecter_etape.py scripts/comparer_pochettes.py
       - name: Rechercher des candidats Discogs pour les fiches Dicté
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
@@ -165,19 +170,19 @@ jobs:
           BATCH_SIZE: '20'
         run: |
           test -n "$AIRTABLE_TOKEN" || { echo "Secret AIRTABLE_TOKEN manquant"; exit 1; }
-          python scripts/enrichir_vinyles.py
+          python scripts/inspecter_etape.py scripts/enrichir_vinyles.py
       - name: Qualifier les recherches de tous les bacs photographiés
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
-        run: python scripts/qualifier_vinyles.py
+        run: python scripts/inspecter_etape.py scripts/qualifier_vinyles.py
       - name: Récupérer les pochettes confirmées de tous les bacs
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
           COVER_BATCH_SIZE: '100'
           DRY_RUN: '0'
-        run: python scripts/recuperer_pochettes_confirmees.py
+        run: python scripts/inspecter_etape.py scripts/recuperer_pochettes_confirmees.py
 
 
       - name: Compléter les champs et recalculer le catalogue
@@ -185,7 +190,7 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
           DRY_RUN: '0'
-        run: python scripts/completer_metadonnees.py
+        run: python scripts/inspecter_etape.py scripts/completer_metadonnees.py
 
   controle:
     name: Contrôle des résultats
@@ -194,18 +199,18 @@ jobs:
       cancel-in-progress: false
     needs: [importer, enrichir]
     if: ${{ always() && needs.importer.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
       - name: Vérifier les captures et les enrichissements réels
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-        run: python scripts/verifier_resultat_automatique.py
+        run: python scripts/inspecter_etape.py scripts/verifier_resultat_automatique.py
   publication:
     name: Publication
     needs: controle
@@ -214,12 +219,12 @@ jobs:
       group: publication-vinyles
       cancel-in-progress: false
     timeout-minutes: 10
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Synchroniser et publier automatiquement
@@ -232,7 +237,7 @@ jobs:
           for tentative in 1 2 3 4; do
             git fetch origin main
             git reset --hard origin/main
-            python scripts/publier_vinyles.py
+            python scripts/inspecter_etape.py scripts/publier_vinyles.py
             git add index.html covers/
             if git diff --cached --quiet; then
               echo "Catalogue déjà synchronisé"
