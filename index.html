@@ -134,7 +134,11 @@ footer a{color:var(--poussiere)}
 }
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 .legende .v{margin:.35rem 0 0;font-size:.78rem;letter-spacing:.04em;color:#c8a24a}
-.legende .v.vide{color:#6b6257;font-style:italic}
+/* « pas d'estimation » partage la classe .vide de la pochette absente : on annule
+   le cadre pointillé, la hauteur 100 % et le centrage, sinon une boîte vide
+   déborde sous la carte (constaté au bac 10, 12 oct. 2026). */
+.legende .v.vide{color:#6b6257;font-style:italic;display:block;height:auto;border:none;
+  padding:0;text-align:left;text-transform:none;letter-spacing:.04em;font-family:inherit;font-size:.78rem;line-height:1.4}
 .puce.nul{opacity:.3}
 .compte.top{color:#c8a24a;margin-top:-.35rem}
 .compte.top strong{font-weight:600}
