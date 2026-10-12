@@ -57,7 +57,7 @@ def select():
             break
     selected.sort(key=lambda row: row['fields'].get('Ordre dans le bac', 0))
     selected.sort(key=lambda row: row['fields'].get('Bac', ''), reverse=True)
-    selected = selected[:int(os.environ.get('NEURAL_BATCH_SIZE', '8'))]
+    selected = selected[:int(os.environ.get('NEURAL_BATCH_SIZE', '12'))]
     SELECTION.write_text(json.dumps(selected), encoding='utf-8')
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
@@ -107,6 +107,14 @@ def complementary_lines(pixels):
              'height':max(float(row['height']) for row in rows),
              'y':min(float(row['top']) for row in rows)} for rows in groups.values()]
 
+def unique_lines(lines):
+    distinct = {}
+    for line in lines:
+        key = (line.get('photo', 0), tuple(words(line['text'])))
+        if key not in distinct or line['confidence'] > distinct[key]['confidence']:
+            distinct[key] = line
+    return list(distinct.values())
+
 def read():
     import easyocr
     import numpy as np
@@ -151,6 +159,7 @@ def read():
                         lines.append(line)
             # Only the foreground recto determines the main heading; other photos
             # still contribute catalogue and label evidence in the complete text.
+            lines = unique_lines(lines)
             principal = [line for line in lines if line.get('photo', 0) == 0]
             text = ' | '.join(line['text'] for line in lines)
             source = re.sub(r'\n\[OCR neural (?:texte|regions)\] [^\n]*', '', source)
