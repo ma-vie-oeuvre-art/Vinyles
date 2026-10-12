@@ -292,6 +292,19 @@ footer a{color:var(--poussiere)}
 .fa-lien{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;
   text-align:left;border-bottom:1px dashed rgba(255,255,255,.3);}
 .fa-lien:hover{border-bottom-color:currentColor}
+
+/* ── PRISE DE SON ─────────────────────────────────────────── */
+.son-noms{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:0 0 26px}
+.son-palier{margin:0 0 34px}
+.son-palier h3{font-weight:400;font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+.son-palier h3 em{font-style:italic;color:var(--or)}
+.son-palier .son-aide{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--poussiere);margin:0 0 14px}
+.son-grille{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.legende .son{font-family:var(--mono);font-size:10px;color:var(--papier);opacity:.7;margin:4px 0 0;
+  letter-spacing:.03em;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.son-reste{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--poussiere);border-top:1px solid rgba(239,231,217,.12);padding-top:16px}
 </style>
 </head>
 <body>
@@ -333,6 +346,7 @@ footer a{color:var(--poussiere)}
     <select id="mPays" aria-label="Pays du pressage"></select>
     <select id="mDec"  aria-label="Décennie"></select>
     <select id="mArt"  aria-label="Interprète"></select>
+    <select id="mSon"  aria-label="Prise de son"></select>
   </div>
   <div class="jetons" id="jetons"></div>
   <nav class="vues" id="vues" aria-label="Façon de regarder la collection"></nav>
@@ -365,6 +379,8 @@ footer a{color:var(--poussiere)}
 
   <!-- Ligne du temps : une colonne par année. -->
   <section class="temps" id="vueTemps" hidden><div class="temps-piste" id="tempsPiste"></div></section>
+  <!-- Prise de son : la chaîne sonore documentée, du plus réputé au simple crédit. -->
+  <section id="vueSon" hidden><div class="son-noms" id="sonNoms"></div><div id="sonPaliers"></div></section>
   <p class="rien" id="rien" hidden>Aucun disque ne correspond.<br>Efface la recherche ou relâche un filtre.</p>
 
   <footer>
@@ -485,6 +501,10 @@ const COTES=['Moins de 10 $','10 à 25 $','25 à 50 $','50 $ et plus','Sans esti
 const cote=r=>{const m=+r.m; return !m?'Sans estimation':m<10?COTES[0]:m<25?COTES[1]:m<50?COTES[2]:COTES[3];};
 // Filtre par interprète, posé en cliquant une carte ou le nom d'une fiche.
 var fArt='';
+// Filtre par personne de la chaîne sonore (table Airtable « Prises de son »).
+var fSon='';
+const sonNoms=r=>r.ps||[];
+const parSon={}; D.forEach(r=>sonNoms(r).forEach(n=>parSon[n]=(parSon[n]||0)+1));
 const parReg={}; D.forEach(r=>regs(r).forEach(x=>parReg[x]=(parReg[x]||0)+1));
 const parLab={}; D.forEach(r=>{ if(lab(r)) parLab[lab(r)]=(parLab[lab(r)]||0)+1; });
 const parCote={}; D.forEach(r=>parCote[cote(r)]=(parCote[cote(r)]||0)+1);
@@ -512,6 +532,8 @@ const AXES=[
   // Les plus présents d'abord : c'est là qu'il y a quelque chose à voir.
   {id:'mArt', nom:'Interprète',    src:()=>parArt,     tri:'nb',
    get:()=>fArt,  set:v=>fArt=v},
+  {id:'mSon', nom:'Prise de son',  src:()=>parSon,     tri:'nb',
+   get:()=>fSon,  set:v=>fSon=v},
 ];
 
 // Les valeurs à zéro sont ÉCARTÉES du menu plutôt que grisées :
@@ -569,6 +591,7 @@ function filtrer(){
     (!fBac||r.b===fBac) && (!fFam||r.f===fFam) &&
     // Un interprète choisi masque tout le reste de la collection.
     (!fArt||artNom(r.a)===fArt) &&
+    (!fSon||sonNoms(r).includes(fSon)) &&
     // fa est un tableau : on teste l'appartenance, pas l'égalité.
     (!fReg||regs(r).includes(fReg)) && (!fFmt||r.fp===fFmt) &&
     (!fLab||lab(r)===fLab) && (!fCote||cote(r)===fCote) &&
@@ -593,12 +616,13 @@ function filtrer(){
 // qui n'existent pas dans le bac choisi — c'est ce qui donnait
 // « TRADITIONNEL / MONDE 1 » et zéro résultat.
 function majCompteurs(){
-  const cb={}, cf={}, cReg={}, cFmt={}, cPays={}, cDec={}, cArt={}, cLab={}, cCote={};
+  const cb={}, cf={}, cReg={}, cFmt={}, cPays={}, cDec={}, cArt={}, cLab={}, cCote={}, cSon={};
   // Un disque compte pour un axe s'il satisfait TOUS LES AUTRES
   // filtres actifs. Sans ça, un bouton annonce « 12 » et le clic
   // ne rend rien — le défaut déjà corrigé pour Bac et Famille.
   const ok=(r,sauf)=>
        (sauf==='art'|| !fArt || artNom(r.a)===fArt)
+    && (sauf==='son'|| !fSon || sonNoms(r).includes(fSon))
     && (sauf==='b'  || !fBac  || r.b===fBac)
     && (sauf==='f'  || !fFam  || r.f===fFam)
     && (sauf==='fa' || !fReg  || regs(r).includes(fReg))
@@ -616,6 +640,7 @@ function majCompteurs(){
     if(ok(r,'fp') && r.fp) cFmt[r.fp]=(cFmt[r.fp]||0)+1;
     if(ok(r,'pa') && r.pa) cPays[r.pa]=(cPays[r.pa]||0)+1;
     if(ok(r,'dc') && r.dc) cDec[r.dc]=(cDec[r.dc]||0)+1;
+    if(ok(r,'son')) sonNoms(r).forEach(n=>cSon[n]=(cSon[n]||0)+1);
     if(ok(r,'art')){ const n=artNom(r.a);
       if(n && !PAS_UN_ARTISTE.test(n)) cArt[n]=(cArt[n]||0)+1; }
   });
@@ -628,7 +653,7 @@ function majCompteurs(){
   // Les quatre axes ne sont plus des rangées mais des menus :
   // on les reconstruit avec les comptes recalculés, et on
   // rafraîchit les jetons dans la foulée.
-  const comptes={mFam:cf, mReg:cReg, mLab:cLab, mCote:cCote, mFmt:cFmt, mPays:cPays, mDec:cDec, mArt:cArt};
+  const comptes={mFam:cf, mReg:cReg, mLab:cLab, mCote:cCote, mFmt:cFmt, mPays:cPays, mDec:cDec, mArt:cArt, mSon:cSon};
   AXES.forEach(a=>remplirMenu(a, comptes[a.id]||{}));
   majJetons();
 }
@@ -654,15 +679,16 @@ function rendre(){
     ' · '+arg(vSel)+' en prix suggérés VG+'+
     (sans?' · '+sans+' sans estimation':'');
   // Aiguillage : cinq vues, une seule liste filtrée.
-  document.querySelectorAll('#mur,#vueBac,#vuePlein,#vueCiel,#vueTemps')
+  document.querySelectorAll('#mur,#vueBac,#vuePlein,#vueCiel,#vueTemps,#vueSon')
     .forEach(el=>el.hidden = true);
   const cible={mur:'mur',bac:'vueBac',plein:'vuePlein',
-               ciel:'vueCiel',temps:'vueTemps'}[vue];
+               ciel:'vueCiel',temps:'vueTemps',son:'vueSon'}[vue];
   document.getElementById(cible).hidden=false;
   if(vue==='bac')   return rendreBac();
   if(vue==='plein') return rendrePlein();
   if(vue==='ciel')  return rendreCiel();
   if(vue==='temps') return rendreTemps();
+  if(vue==='son')   return rendreSon();
 
   liste.forEach((r,i)=>{
     const c=document.createElement('button');
@@ -698,6 +724,7 @@ const VUES=[
   ['plein', 'Plein cadre'],
   ['ciel',  'Constellation'],
   ['temps', 'Ligne du temps'],
+  ['son',   'Prise de son'],
 ];
 const barre=document.getElementById('vues');
 // Rafraîchit l'état de la barre. Appelée aussi quand la vue change
@@ -892,6 +919,69 @@ function rendreTemps(){
   }
 }
 
+/* ── PRISE DE SON ─────────────────────────────────────────────
+   12 octobre 2026. Répond à « lequel écouter pour le son ».
+   Paliers, du plus sûr au plus mince :
+   1. un ingénieur de RÉFÉRENCE HISTORIQUE dans la chaîne (table
+      Airtable « Prises de son », réputation documentée et sourcée);
+   2. un ingénieur RECONNU;
+   3. la réputation sonore du LABEL (champ « Réputation sonore ») —
+      un label, pas un enregistrement : jamais au-dessus des noms;
+   4. des crédits de prise de son documentés, sans réputation;
+   le reste est compté, pas montré.
+   Aucune note n'est inventée : un palier ne vient que d'Airtable. */
+const PALIERS=[
+  {id:'ref', t:'Chaîne sonore de <em>référence</em>', aide:'un ingénieur à la réputation historique documentée',
+   ok:r=>r.pr==='Référence historique'},
+  {id:'rec', t:'Ingénieurs <em>reconnus</em>', aide:'réputation documentée dans le métier',
+   ok:r=>r.pr==='Reconnu'},
+  {id:'lab', t:'Label à la <em>réputation sonore</em>', aide:'la réputation est celle du label, pas de cette prise',
+   ok:r=>r.r==='Exceptionnelle'||r.r==='Bonne'},
+  {id:'cre', t:'Crédits de prise de son <em>documentés</em>', aide:'qui a enregistré, mixé, gravé — sans jugement',
+   ok:r=>sonNoms(r).length>0},
+];
+function rendreSon(){
+  const z=document.getElementById('sonPaliers'), noms=document.getElementById('sonNoms');
+  // Les noms qui reviennent dans la sélection : un clic filtre la collection.
+  const cpt={}; liste.forEach(r=>sonNoms(r).forEach(n=>cpt[n]=(cpt[n]||0)+1));
+  const top=Object.keys(cpt).filter(n=>cpt[n]>1||n===fSon)
+    .sort((a,b)=>cpt[b]-cpt[a]||a.localeCompare(b,'fr')).slice(0,18);
+  noms.innerHTML=top.length?'<span class="etiq">Noms</span>':'';
+  top.forEach(n=>{
+    const b=document.createElement('button');
+    b.className='puce'; b.setAttribute('aria-pressed',String(n===fSon));
+    b.innerHTML=esc(n)+'<span class="n">'+cpt[n]+'</span>';
+    b.onclick=()=>{ fSon=(fSon===n?'':n); rendre(); };
+    noms.appendChild(b);
+  });
+  z.innerHTML='';
+  const vus=new Set();
+  PALIERS.forEach(p=>{
+    const lot=liste.filter(r=>!vus.has(r)&&p.ok(r)); if(!lot.length) return;
+    lot.forEach(r=>vus.add(r));
+    const sec=document.createElement('section'); sec.className='son-palier';
+    sec.innerHTML='<h3>'+p.t+' <span class="n" style="font-family:var(--mono);font-size:12px;color:var(--poussiere)">'+lot.length+'</span></h3>'+
+      '<p class="son-aide">'+p.aide+'</p>';
+    const g=document.createElement('div'); g.className='son-grille';
+    lot.forEach(r=>{
+      const c=document.createElement('button'); c.className='carte';
+      const n=sonNoms(r);
+      c.innerHTML='<div class="pochette">'+pochetteOu(r,'Pochette de '+esc(r.t))+
+        '<span class="adresse">'+r.b+' · '+r.o+'</span></div>'+
+        '<div class="legende"><p class="t">'+esc(r.t)+'</p><p class="a">'+esc(r.a)+'</p>'+
+        (n.length?'<p class="son">'+esc(n.slice(0,3).join(' · '))+(n.length>3?' · +'+(n.length-3):'')+'</p>'
+                 :(r.r?'<p class="son">label : '+esc(r.r)+'</p>':''))+'</div>';
+      c.onclick=()=>ouvrir(liste.indexOf(r));
+      g.appendChild(c);
+    });
+    sec.appendChild(g); z.appendChild(sec);
+  });
+  const reste=liste.length-vus.size;
+  if(reste){ const p=document.createElement('p'); p.className='son-reste';
+    p.textContent=reste+(reste>1?' disques':' disque')+' sans crédit de prise de son sur Discogs';
+    z.appendChild(p); }
+}
+
 function esc(s){return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 
 const voile=document.getElementById('voile'), flip=document.getElementById('flip');
@@ -939,6 +1029,7 @@ function ouvrir(i){
   if(comm) d.push(['Communauté', comm]);
   const tech=propre(r.technique); if(tech) d.push(['Enregistrement', tech]);
   const hist=propre(r.historique); if(hist) d.push(['Histoire', hist]);
+  if(sonNoms(r).length) d.push(['Chaîne sonore', sonNoms(r).join(' · ')+(r.pr?' — '+r.pr.toLowerCase():'')]);
   if(r.r) d.push(['Réputation', r.r]);
   document.getElementById('fd').innerHTML=d.map(([k,v])=>'<dt>'+k+'</dt><dd>'+esc(''+v)+'</dd>').join('');
   const lien=document.getElementById('fl');

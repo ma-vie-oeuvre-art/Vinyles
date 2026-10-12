@@ -175,6 +175,8 @@ def main():
             "indicatif": bool(documented and not verified), "sourcePrix": r.get("Source de l'estimation") or "",
             "technique": r.get("Qualité d'enregistrement (source)") or "", "historique": r.get("Informations historiques") or "",
         }
+        # Onglet « Prise de son » : chaîne sonore liée (table Prises de son), tous bacs confondus.
+        item.update(prise_de_son(r))
         if key in by_key:
             # Actualiser les fiches enrichies par GitHub sans retirer les entrées historiques.
             pos = by_key[key]
@@ -188,6 +190,12 @@ def main():
             # Le label seul alimente le menu « Label » pour tous les bacs, historiques compris.
             if item.get('l') and repaired.get('l') != item['l']:
                 repaired['l'] = item['l']
+            # La chaîne sonore suit Airtable pour TOUS les bacs, historiques compris.
+            for cle in ('ps', 'pr'):
+                if item.get(cle):
+                    repaired[cle] = item[cle]
+                else:
+                    repaired.pop(cle, None)
             if repaired != old:
                 existing[pos] = repaired
                 updated += 1
@@ -226,6 +234,24 @@ def main():
     SITE.write_text(rebuilt, encoding="utf-8")
     print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08, {len(removed)} suppressions B-08. Les autres bacs conservés.")
     return 0
+
+RANG_REPUTATION = ["Référence historique", "Reconnu", "Non évalué"]
+
+def prise_de_son(r):
+    """Noms de la chaîne sonore (les plus réputés d'abord) et meilleure réputation documentée.
+    Les deux lookups viennent du même champ lien : ils sont alignés, rang pour rang."""
+    noms = [str(n).strip() for n in (r.get("Prise de son — noms") or [])]
+    reps = list(r.get("Prise de son — réputation") or [])
+    if len(reps) != len(noms):
+        reps = ["Non évalué"] * len(noms)
+    rang = {}
+    for n, rep in zip(noms, reps):
+        if n:
+            k = RANG_REPUTATION.index(rep) if rep in RANG_REPUTATION else 2
+            rang[n] = min(k, rang.get(n, 2))
+    ordre = sorted(rang, key=lambda n: (rang[n], n.lower()))
+    meilleure = RANG_REPUTATION[min(rang.values())] if rang else ""
+    return {"ps": ordre, "pr": meilleure if meilleure != "Non évalué" else ""}
 
 def synced(bac):
     """Bacs B-08 et suivants : Airtable fait foi, un champ vidé disparaît aussi du site.

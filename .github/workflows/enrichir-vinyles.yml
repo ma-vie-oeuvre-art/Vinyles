@@ -123,6 +123,12 @@ jobs:
           DRY_RUN: '0'
         run: python scripts/inspecter_etape.py scripts/completer_metadonnees.py
 
+      - name: Lier les disques à leur chaîne sonore (table Prises de son)
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          DRY_RUN: '0'
+        run: python scripts/inspecter_etape.py scripts/lier_prises_de_son.py
+
   controle:
     name: Contrôle des résultats
     concurrency:
