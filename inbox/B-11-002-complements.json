@@ -1,6 +1,6 @@
 {
   "bac": "B-11",
-  "expected_count": 25,
+  "expected_count": 26,
   "images": [
     {
       "bac": "B-11",
@@ -10,7 +10,7 @@
     },
     {
       "bac": "B-11",
-      "position": 15,
+      "position": 16,
       "path": "photos/B-11/IMG_0920.jpeg",
       "sha256": "98c48998a144c1ddc08db8e2dd1cef454053744787b4f4f211e52f43a335a1f8"
     }
