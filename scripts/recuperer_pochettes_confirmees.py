@@ -77,6 +77,9 @@ def album_reference(f, headers):
     master_id = next(iter(matches))
     master = get(f"https://api.discogs.com/masters/{master_id}", headers)
     main_id = master.get("main_release")
+    from reconnaitre_albums import rejected_references
+    if str(main_id) in rejected_references(f.get('Transcription source', '')):
+        return None
     if not main_id or str(master.get("id")) != str(master_id):
         return None
     release = get(f"https://api.discogs.com/releases/{main_id}", headers)
@@ -95,7 +98,9 @@ def candidate_reference(f, headers, require_images=True):
     if not isinstance(candidates, list):
         return None
     album_fields = {k: v for k, v in f.items() if k != "N° catalogue"}
-    matches = [x for x in candidates if concordant(album_fields, x)]
+    from reconnaitre_albums import rejected_references
+    rejected = rejected_references(f.get('Transcription source', ''))
+    matches = [x for x in candidates if str(x.get('release_id')) not in rejected and concordant(album_fields, x)]
     matches.sort(key=lambda x: (norm(x.get("catno")) != norm(f.get("N° catalogue")), int(x["release_id"])))
     for item in matches[:5]:
         release = get(f"https://api.discogs.com/releases/{item['release_id']}", headers)

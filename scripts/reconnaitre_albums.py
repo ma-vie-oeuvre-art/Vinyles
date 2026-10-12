@@ -61,8 +61,10 @@ def capture_queries(fields):
         return []
     return [source[:100]]
 
-def collect(result, ocr, albums, candidates, catalogue=None, corroborated_catalogue=False):
+def collect(result, ocr, albums, candidates, catalogue=None, corroborated_catalogue=False, rejected=()):
     for item in result.get('results', []):
+        if str(item.get('id')) in rejected:
+            continue
         if catalogue and re.sub(r'[^A-Z0-9]', '', str(item.get('catno', '')).upper()) != catalogue:
             continue
         credit, sep, title = str(item.get('title', '')).rpartition(' - ')
@@ -140,6 +142,7 @@ def main():
         if f.get('Artiste') and f.get('Titre') and not existing_self_title and str(f.get('Discogs référence release_id', '')).isdigit():
             continue
         source = f.get('Transcription source', '')
+        rejected = rejected_references(source)
         if existing_self_title and '[Identité visuelle vérifiée]' in source:
             continue
         ocr = (source.partition('[OCR pochette]')[2] or source.partition('[OCR neural texte]')[2]).strip()
@@ -155,7 +158,7 @@ def main():
             prior = json.loads(f.get('Candidats Discogs') or '[]')
         except (ValueError, TypeError):
             prior = []
-        collect({'results': [{'id': item['release_id'], 'title': item['titre'], 'master_id': item.get('master_id'), 'catno': item.get('catno')} for item in prior if isinstance(item, dict) and item.get('release_id') and item.get('titre')]}, ocr, prior_albums, prior_candidates)
+        collect({'results': [{'id': item['release_id'], 'title': item['titre'], 'master_id': item.get('master_id'), 'catno': item.get('catno')} for item in prior if isinstance(item, dict) and item.get('release_id') and item.get('titre') and str(item['release_id']) not in rejected]}, ocr, prior_albums, prior_candidates)
         primary = {key: value for key, value in prior_albums.items() if prominent and supported(prominent, *value) and not self_titled(*value)}
         specific = {key: value for key, value in primary.items() if set(words(value[1])) - set(words(value[0])) - {'THE', 'AND', 'VOL'}}
         if specific:
@@ -192,7 +195,7 @@ def main():
                     save_search(url, result)
                 cache[url] = result
             for item in cache[url].get('results', []):
-                if item.get('type') == 'release' and item.get('cover_image') and ' - ' in item.get('title', ''):
+                if item.get('type') == 'release' and str(item.get('id')) not in rejected and item.get('cover_image') and ' - ' in item.get('title', ''):
                     visual_candidates[item['id']] = {'release_id': item['id'], 'master_id': item.get('master_id'), 'titre': item['title'], 'catno': item.get('catno'), 'label': item.get('label'), 'pays': item.get('country'), 'annee': item.get('year'), 'cover_url': item['cover_image']}
             return cache[url]
         physical_hint = re.sub(r'[^A-Z0-9]', '', str(f.get('N° catalogue', '')).upper())
@@ -206,7 +209,7 @@ def main():
         for hint in hints:
             result = search({'catno': hint, 'type': 'release', 'format': 'Vinyl', 'per_page': 100})
             complete = complete and int(result.get('pagination', {}).get('pages', 1)) <= 1
-            collect(result, ocr, albums, candidates, hint, hint in corroborated)
+            collect(result, ocr, albums, candidates, hint, hint in corroborated, rejected)
         physical_match = physical_hint and any(re.sub(r'[^A-Z0-9]', '', str(c.get('catno', '')).upper()) == physical_hint for c in candidates.values())
         catalogue_verified = bool((corroborated or physical_match) and complete and len(albums) == 1)
         # Stop only when all exact catalogue results support a single visible album.
@@ -214,7 +217,7 @@ def main():
         if not (hints and complete and len(albums) == 1):
             for query in queries[:10]:
                 result = search({'q': query[:100], 'type': 'release', 'format': 'Vinyl', 'per_page': 100})
-                collect(result, ocr, albums, candidates)
+                collect(result, ocr, albums, candidates, rejected=rejected)
         if len(albums) > 1 and prominent:
             strong = {key: value for key, value in albums.items() if supported(prominent, *value)}
             # An artist's name also matches every self-titled search result.
