@@ -57,7 +57,10 @@ def durable_image(url, identity):
 def prepare_images(fields):
     cover, back, personal = site_images(fields)
     for side, url, field in [('front', cover, 'Front Cover'), ('back', back, 'Back Cover')]:
-        attachments = fields.get(field) or (fields.get('Photos personnelles') if side == 'front' else []) or []
+        if side == 'front' and personal:
+            attachments = fields.get('Photos personnelles') or []
+        else:
+            attachments = fields.get(field) or []
         # Fresh attachment URLs are used only during download, never in the HTML.
         remote = bool(url and urllib.parse.urlparse(url).scheme)
         attachment = attachments[0] if attachments and remote else {}
@@ -71,9 +74,22 @@ def prepare_images(fields):
     return cover, back, personal
 
 def site_images(fields):
-    """Publish durable source URLs, never expiring Airtable download links."""
-    cover = as_url(fields.get('Front Cover')) or as_url(fields.get('Photos personnelles'))
-    personal = False
+    """Publish durable source URLs, never expiring Airtable download links.
+    Règle : le mur montre la pochette DISCOGS dès qu'elle existe (version identifiée
+    ou version de référence). La photo de l'exemplaire n'est qu'un repli, quand
+    Discogs n'a aucune image."""
+    discogs = as_url(fields.get('Front Cover'))
+    back = as_url(fields.get('Back Cover'))
+    sources = fields.get('Images Discogs — URLs sources', '')
+    primary = re.search(r'(?:^|\n)primary: (https://\S+)', sources)
+    secondary = re.search(r'(?:^|\n)secondary: (https://\S+)', sources)
+    if primary and discogs:
+        discogs = 'https://images.weserv.nl/?url=' + urllib.parse.quote(primary[1], safe='') + '&output=jpg'
+    if secondary and back:
+        back = 'https://images.weserv.nl/?url=' + urllib.parse.quote(secondary[1], safe='') + '&output=jpg'
+    if discogs:
+        return discogs, back, False
+    # Repli : photo personnelle, seulement sans aucune image Discogs.
     paths = re.findall(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     for attachment in fields.get('Photos personnelles') or []:
         filename = attachment.get('filename', '')
@@ -82,18 +98,9 @@ def site_images(fields):
     for path in paths:
         local = (ROOT / path.strip()).resolve()
         if ROOT.resolve() in local.parents and local.is_file() and local.suffix.lower() in {'.jpg', '.jpeg', '.png', '.webp'}:
-            cover = local.relative_to(ROOT.resolve()).as_posix()
-            personal = True
-            break
-    back = as_url(fields.get('Back Cover'))
-    sources = fields.get('Images Discogs — URLs sources', '')
-    primary = re.search(r'(?:^|\n)primary: (https://\S+)', sources)
-    secondary = re.search(r'(?:^|\n)secondary: (https://\S+)', sources)
-    if primary and fields.get('Front Cover') and not personal:
-        cover = 'https://images.weserv.nl/?url=' + urllib.parse.quote(primary[1], safe='') + '&output=jpg'
-    if secondary and back:
-        back = 'https://images.weserv.nl/?url=' + urllib.parse.quote(secondary[1], safe='') + '&output=jpg'
-    return cover, back, personal
+            return local.relative_to(ROOT.resolve()).as_posix(), back, True
+    personal_url = as_url(fields.get('Photos personnelles'))
+    return personal_url, back, bool(personal_url)
 
 def fetch_rows(token):
     rows, cursor = [], None
