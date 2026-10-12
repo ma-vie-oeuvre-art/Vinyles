@@ -186,6 +186,10 @@ def flatten_tracks(items, work=''):
         result.append(item)
     return result
 
+WORLD_STYLES = {'Folk', 'Celtic', 'Traditional', 'Polka', 'Flamenco', 'Fado', 'Tango', 'Calypso', 'Soca', 'Greek',
+                'Balkan', 'Klezmer', 'African', 'Highlife', 'Bossanova', 'Bolero', 'Folklore', 'Afro-Cuban', 'Cumbia',
+                'Rumba', 'Ranchera', 'Mariachi', 'Pacific', 'Hawaiian', 'Steel Band', 'Musette', 'Indian Classical',
+                'Field Recording', 'Nordic', 'Volksmusik', 'Andean Music', 'Gypsy Jazz', 'Mento', 'Bhangra', 'Celtic Folk'}
 COUNTRY_STYLES = {'Country', 'Country Rock', 'Bluegrass', 'Honky Tonk', 'Nashville Sound', 'Countrypolitan', 'Cajun'}
 
 def classification(release):
@@ -195,8 +199,12 @@ def classification(release):
     fiche country est une erreur Discogs et ne décide pas de la famille."""
     genres = set(release.get('genres', []))
     styles = set(release.get('styles', []))
-    country = bool(styles & COUNTRY_STYLES)
     chanson = 'Chanson' in styles
+    world = bool(styles & WORLD_STYLES)
+    # Country : un style country, ou le mot « country » dans le titre (Discogs laisse souvent les styles vides).
+    country = bool(styles & COUNTRY_STYLES) or 'country' in str(release.get('title', '')).lower()
+    # Sans aucun style, « Folk, World, & Country » reste folklorique sauf indice country.
+    world = world or (not styles and not country)
     tags = []
     if styles & {'Christmas'}: tags.append('Noël')
     if styles & {'Soundtrack', 'Score', 'Musical'}: tags.append('Bandes sonores')
@@ -204,7 +212,7 @@ def classification(release):
     for genre, family in [('Classical','Classique'),('Jazz','Jazz'),('Rock','Pop-rock'),('Pop','Pop-rock'),('Electronic','Électro / Dance'),('Funk / Soul','Funk / Soul'),('Folk, World, & Country','Traditionnel / Monde'),('Blues','Blues'),('Latin','Latin'),('Reggae','Reggae'),('Hip Hop','Hip-hop')]:
         if genre not in genres or family in tags: continue
         if country and family in ('Jazz', 'Traditionnel / Monde'): continue
-        if chanson and family == 'Traditionnel / Monde': continue
+        if family == 'Traditionnel / Monde' and not world: continue
         tags.append(family)
     if chanson: tags.append('Chanson')
     if country: tags.append('Country')
@@ -213,7 +221,13 @@ def classification(release):
     if 'Compilation' in descriptions: tags.append('Compilation')
     if 'Live' in styles: tags.append('Enregistrement public')
     allowed = {'Classique','Noël','Bandes sonores','Francophone','Jazz','Pop-rock','Électro / Dance','Funk / Soul','Traditionnel / Monde'}
-    primary = 'Général' if country and not chanson else next((x for x in tags if x in allowed), 'Général')
+    rock = bool(genres & {'Rock', 'Pop'}) and not (styles & COUNTRY_STYLES - {'Country Rock'})
+    if country and not chanson and not rock:
+        primary = 'Général'
+    elif country and rock:
+        primary = 'Pop-rock'
+    else:
+        primary = next((x for x in tags if x in allowed), 'Général')
     return primary, list(dict.fromkeys(tags)) or ['Général']
 
 def physical_format(release):
