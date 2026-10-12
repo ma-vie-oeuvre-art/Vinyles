@@ -1,4 +1,4 @@
-"""Remplacer une exécution obsolète après correction du code, sans annuler les lots."""
+"""Laisser les traitements actifs finir; supprimer seulement les attentes obsolètes."""
 import json
 import os
 import urllib.request
@@ -20,7 +20,7 @@ def main():
     # Include queued runs: one can start between listing and cancellation of its predecessor.
     runs = request('actions/runs?per_page=100')['workflow_runs']
     for run in runs:
-        if (run.get('status') not in {'in_progress', 'queued', 'pending', 'waiting', 'requested'}
+        if (run.get('status') not in {'queued', 'pending', 'waiting', 'requested'}
                 or run['id'] == current or run.get('path') != WORKFLOW
                 or run.get('head_branch') != 'main' or run['head_sha'] == head
                 or int(run['id']) > current):
@@ -36,7 +36,7 @@ def main():
                 if exc.code == 409 and request(f'actions/runs/{run["id"]}').get('status') == 'completed':
                     continue
                 raise
-            print(f'Ancienne version remplacée : exécution {run["id"]}. Les fiches déjà enregistrées sont conservées.', flush=True)
+            print(f'Attente obsolète remplacée : exécution {run["id"]}. Les traitements actifs continuent jusqu’au bout.', flush=True)
 
 if __name__ == '__main__':
     main()
