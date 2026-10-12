@@ -9,6 +9,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from reprises_automatiques import retry_due, next_retry
 from cache_recherches import cached_search, save_search
+from lecture_images import useful_region
 import urllib.parse
 from enrichir_vinyles import request_json, API, BASE, TABLE
 
@@ -39,7 +40,7 @@ def supported(ocr, credit, title):
     return bool(artist_words) and sum(w in visible for w in artist_words) / len(artist_words) >= 0.65
 
 def recognition_stamp(ocr):
-    return '[recognition-v4:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
+    return '[recognition-v5:' + hashlib.sha256(ocr.encode()).hexdigest()[:12] + ']'
 
 def should_search(ocr, diagnostic, today):
     if recognition_stamp(ocr) not in diagnostic:
@@ -48,7 +49,7 @@ def should_search(ocr, diagnostic, today):
 
 def catalogues(ocr):
     # Search hints only: never assign a physical catalogue from this extraction.
-    known = {'CL','CS','CRL','DL','UAS','UAL','MS','LS','LP','ST','SF','PS','PAS','SD','SP','SR','LSP','LM','CPS','SPC','RS','SPS','SPFL'}
+    known = {'CL','CS','CRL','DL','UAS','UAL','MS','LS','LP','ST','SF','PS','PAS','SD','SP','SR','LSP','LM','CPS','SPC','RS','SPS','SPFL','DG','CAS','DS','KSD','CBS','MFP'}
     return list(dict.fromkeys(prefix + digits for prefix, digits in
         re.findall(r'\b([A-Z]{1,4})[ -]*(\d{3,7})\b', ocr.upper()) if prefix in known))[:3]
 
@@ -81,19 +82,21 @@ def neural_evidence(source):
         regions = json.loads(match[1])
     except (ValueError, TypeError):
         return [], ''
-    regions = [r for r in regions if r.get('confidence', 0) >= .35 and words(r.get('text', ''))]
+    regions = [r for r in regions if r.get('confidence', 0) >= .20 and useful_region(r) and words(r.get('text', ''))]
     if not regions:
         return [], ''
     maximum = max(r['height'] for r in regions)
-    prominent = [r for r in regions if r['height'] >= maximum * .45][:8]
+    prominent = [r for r in regions if r['height'] >= maximum * .35][:14]
     ordered = sorted(prominent, key=lambda r: r['y'])
     texts = [r['text'] for r in prominent]
-    queries = texts[:5] + [' '.join(r['text'] for r in ordered[i:i+2]) for i in range(min(4, len(ordered)-1))]
+    combined = [' '.join(r['text'] for r in ordered[i:i+size]) for size in (3, 2) for i in range(min(4, max(0, len(ordered)-size+1)))]
+    queries = combined[:4] + texts[:5] + combined[4:]
     # The full OCR remains the corroboration source; large lettering breaks ties.
     return list(dict.fromkeys(queries)), ' | '.join(texts)
 
 def reset_reference(fields):
-    if not fields.get('Enrichissement automatique', '').startswith('metadata-v'):
+    source = fields.get('Transcription source', '')
+    if not fields.get('Enrichissement automatique', '').startswith('metadata-v') and not any(x in source for x in ('[Titre vérifié automatiquement]', '[identite-canonique-', '[Identité visuelle vérifiée]', '[Titre principal vérifié]')):
         return {}
     keys = ['Discogs référence release_id', 'Discogs référence album', 'Version de référence — détails', 'Tracklist JSON', 'Nombre de plages', 'Titres — index normalisé', 'Famille', 'Familles', "Année de l'album", 'Possédé par (Discogs)', 'Recherché par (Discogs)', 'Note Discogs (sur 5)', 'Nombre de notes (Discogs)', 'Exemplaires en vente (Discogs)', 'Valeur minimale', 'Prix suggéré VG+ (Discogs)', 'Prix suggéré Mint (Discogs)', "Source de l'estimation", "Date de l'estimation", "Qualité d'enregistrement (source)", 'Informations historiques', 'Enrichissement automatique']
     updates = {key: None for key in keys if key in fields}
@@ -102,6 +105,12 @@ def reset_reference(fields):
         if 'Images Discogs — URLs sources' in fields:
             updates['Images Discogs — URLs sources'] = None
     return updates
+
+def rejected_references(source):
+    return set(re.findall(r'\[Référence rejetée automatiquement r(\d+):', source))
+
+def clear_identity_markers(source):
+    return re.sub(r'\n\[(?:Titre vérifié automatiquement|Identité visuelle vérifiée|Titre principal vérifié|identite-canonique-v\d+:[^\]]+)\]', '', source)
 
 def main():
     at = {'Authorization': 'Bearer ' + os.environ['AIRTABLE_TOKEN'], 'Content-Type': 'application/json'}
@@ -128,14 +137,14 @@ def main():
         if f.get('Ne pas retraiter') or f.get('Discogs release_id') or f.get("Preuve d'identification") == 'Validation humaine':
             continue
         existing_self_title = self_titled(f.get('Artiste', ''), f.get('Titre', ''))
-        if f.get('Artiste') and f.get('Titre') and not existing_self_title:
+        if f.get('Artiste') and f.get('Titre') and not existing_self_title and str(f.get('Discogs référence release_id', '')).isdigit():
             continue
         source = f.get('Transcription source', '')
         if existing_self_title and '[Identité visuelle vérifiée]' in source:
             continue
         ocr = (source.partition('[OCR pochette]')[2] or source.partition('[OCR neural texte]')[2]).strip()
         neural_queries, prominent = neural_evidence(source)
-        checking_title = '[Vérification du titre automatique]' in source or existing_self_title
+        checking_title = '[Vérification du titre automatique]' in source or existing_self_title or bool(f.get('Artiste') and f.get('Titre'))
         ocr = re.sub(r'\[OCR neural regions\] [^\n]+', '', ocr)
         if not ocr:
             continue
@@ -155,7 +164,8 @@ def main():
             artist, title = next(iter(primary.values()))
             retained = [item for item in prior if supported(prominent, *str(item.get('titre', '')).rpartition(' - ')[::2])]
             reset = reset_reference(f) if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))) else {}
-            request_json(endpoint + '/' + row['id'], at, {'fields': {**reset, 'Transcription source': source if '[Titre vérifié automatiquement]' in source else source + '\n[Titre vérifié automatiquement]', 'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
+            verified_source = clear_identity_markers(source) if reset else source
+            request_json(endpoint + '/' + row['id'], at, {'fields': {**reset, 'Transcription source': verified_source if '[Titre vérifié automatiquement]' in verified_source else verified_source + '\n[Titre vérifié automatiquement]', 'Artiste': artist, 'Titre': title.strip(), 'Candidats Discogs': json.dumps(retained, ensure_ascii=False), 'Diagnostic': 'Album reconnu automatiquement par GitHub après vérification des textes principaux; pressage précis reporté au besoin. [Titre vérifié automatiquement]'}})
             print(f'{row["id"]}: album reconnu depuis les preuves conservées, sans nouvelle recherche', flush=True)
             continue
         if not should_search(ocr, f.get('Diagnostic', ''), today):
@@ -225,6 +235,7 @@ def main():
             artist, title = next(iter(albums.values()))
             if checking_title and (words(artist), words(title)) != (words(f.get('Artiste','')), words(f.get('Titre',''))):
                 updates.update(reset_reference(f))
+                source = clear_identity_markers(source)
             updates.update({'Transcription source': source if '[Titre vérifié automatiquement]' in source else source + '\n[Titre vérifié automatiquement]', 'Artiste': artist, 'Titre': title, 'Diagnostic': ('Album reconnu par catalogue concordant dans les deux lectures automatiques; aucune édition physique attribuée.' if catalogue_verified else 'Album reconnu par GitHub à partir du texte de la photo; pressage précis reporté au besoin.') + ' [Titre vérifié automatiquement]'})
             print(f'{row["id"]}: album reconnu')
         else:
@@ -234,6 +245,7 @@ def main():
                 # A small track name must not retain an unrelated album reference.
                 updates.update({'Artiste': None, 'Titre': None, 'Candidats Discogs': '[]'})
                 updates.update(reset_reference(f))
+                updates['Transcription source'] = clear_identity_markers(source)
                 updates['Diagnostic'] = 'Ancienne attribution automatique retirée: les textes seuls ne confirmaient pas ce titre; comparaison des pochettes nécessaire. Recherche automatique poursuivie.'
             visible = set(words(ocr))
             def visual_priority(item):

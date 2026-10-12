@@ -77,3 +77,18 @@ assert capture_queries({'Transcription source':'The Shadows, Out of the Shadows.
 assert capture_queries({'Transcription source':'Pochette illisible sur photo floue; à revoir. Source photo: IMG_0885.jpeg'}) == []
 assert capture_queries({'Transcription source':'Photo personnelle — fichier source: photos/B-09/001.jpeg\n[OCR pochette] un titre'}) == []
 print('Indices de capture prioritaires, sans attribution inventée, vérifiés')
+
+from reconnaitre_albums import neural_evidence, clear_identity_markers
+from lire_pochettes_neural import marker
+noisy=source([region('1200',600),region('vente',100),region('Artist Surname',80),region('Main Title',70)])
+queries,prominent=neural_evidence(noisy['Transcription source'])
+assert 'Artist Surname' in prominent and 'Main Title' in prominent
+assert '1200' not in prominent and 'vente' not in prominent
+assert marker('Photo personnelle — fichier source: photos/front.jpg') != marker('Photo personnelle — fichier source: photos/front.jpg\nPhoto personnelle — fichier source: photos/back.jpg')
+rejected={'Artiste':'Artist','Titre':'Main Title','Transcription source':'[Titre vérifié automatiquement]\n[Référence rejetée automatiquement r1: contradiction]',
+          'Candidats Discogs':json.dumps([{'release_id':1,'titre':'Other - Wrong Title'},{'release_id':2,'titre':'Artist - Main Title'}])}
+assert c.canonical_candidate(rejected)['release_id']==2
+rejected['Candidats Discogs']=json.dumps([{'release_id':1,'titre':'Other - Wrong Title'}])
+assert c.canonical_candidate(rejected) is None
+assert '[Titre vérifié automatiquement]' not in clear_identity_markers('Photo\n[Titre vérifié automatiquement]\n[identite-canonique-v2:1]')
+print('Étiquettes de prix exclues, toutes les photos prises en compte et références rejetées protégées.')

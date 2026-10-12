@@ -265,9 +265,9 @@ def metadata(f, release, headers, cache):
     out = {RID:rid, REF:'https://www.discogs.com/release/' + rid}
     automatic = f.get('Enrichissement automatique', '').startswith('metadata-v') and f.get("Preuve d'identification") != 'Validation humaine'
     if automatic and f.get('Photos personnelles') and reference_conflicts(f, release):
-        from reconnaitre_albums import reset_reference
+        from reconnaitre_albums import reset_reference, clear_identity_markers
         out = reset_reference(f)
-        source = re.sub(r'\n\[(?:Identité visuelle vérifiée|Titre principal vérifié|identite-canonique-v\d+:[^\]]+)\]', '', f.get('Transcription source', ''))
+        source = clear_identity_markers(f.get('Transcription source', ''))
         source += f'\n[Référence rejetée automatiquement r{rid}: titre incompatible avec les grandes inscriptions]'
         out.update({'Artiste': None, 'Titre': None, 'Statut': 'À revoir', 'Cause': 'Transcription incertaine', 'Candidats Discogs': '[]', 'Transcription source': source,
                     REPORT: f'{VERSION} : référence contradictoire retirée; aucun enrichissement actif.',

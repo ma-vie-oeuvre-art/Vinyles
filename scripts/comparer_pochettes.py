@@ -14,7 +14,8 @@ from reprises_automatiques import retry_due, next_retry
 from cache_recherches import cached_search, save_search
 from enrichir_vinyles import request_json as _request_json, API, BASE, TABLE
 import urllib.error
-from reconnaitre_albums import words, album_title, neural_evidence, supported, reset_reference
+from reconnaitre_albums import words, album_title, neural_evidence, supported, reset_reference, rejected_references, clear_identity_markers
+from lecture_images import useful_region
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTION = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'vinyles-visual-selection.json'
@@ -74,7 +75,7 @@ def main_heading(fields, candidates):
     match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
     if not match:
         return None
-    regions = [r for r in json.loads(match[1]) if r.get('confidence', 0) >= .35]
+    regions = [r for r in json.loads(match[1]) if r.get('confidence', 0) >= .20 and useful_region(r)]
     if not regions:
         return None
     maximum = max(r['height'] for r in regions)
@@ -156,7 +157,7 @@ def fingerprint(fields):
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
     match = re.search(r'fichier source: ([^\n]+)', fields.get('Transcription source', ''))
     evidence = [match[1] if match else fields.get('Clé'), fields.get('Transcription source', ''), sorted((str(c.get('release_id')), c.get('cover_url', '')) for c in candidates)]
-    return '[comparaison-visuelle-v15:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
+    return '[comparaison-visuelle-v16:' + hashlib.sha256(json.dumps(evidence).encode()).hexdigest()[:16] + ']'
 
 def should_compare(fields):
     if fingerprint(fields) not in fields.get('Diagnostic', ''):
@@ -167,10 +168,14 @@ def canonical_candidate(fields):
     if not any(marker in fields.get('Transcription source','') for marker in ['[Identité visuelle vérifiée]','[Titre principal vérifié]','[Titre vérifié automatiquement]']):
         return None
     existing = str(fields.get('Discogs référence release_id',''))
-    if existing.isdigit():
+    rejected = rejected_references(fields.get('Transcription source', ''))
+    if existing.isdigit() and existing not in rejected:
         return {'release_id': existing}
     candidates = json.loads(fields.get('Candidats Discogs') or '[]')
-    return next((c for c in candidates if str(c.get('release_id','')).isdigit()), None)
+    expected = (words(fields.get('Artiste', '')), words(fields.get('Titre', '')))
+    return next((c for c in candidates if str(c.get('release_id','')).isdigit()
+                 and str(c['release_id']) not in rejected
+                 and (words(c.get('titre', '').rpartition(' - ')[0]), words(c.get('titre', '').rpartition(' - ')[2])) == expected), None)
 
 def canonical_marker(candidate):
     return '[identite-canonique-v2:' + str(candidate['release_id']) + ']'
@@ -225,12 +230,16 @@ def select():
             output.write(f'count={len(rows)}\n')
     print(f'Comparaison visuelle: {len(rows)} photo(s) à comparer.', flush=True)
 
-def features(data):
+def features(data, foreground=False):
     import cv2
     import numpy as np
     from PIL import Image, ImageOps
     with Image.open(io.BytesIO(data)) as original:
-        image = ImageOps.exif_transpose(original).convert('L')
+        image = ImageOps.exif_transpose(original).convert('RGB')
+        if foreground:
+            from lecture_images import cover_pixels
+            image = Image.fromarray(cover_pixels(image))
+        image = image.convert('L')
         image.thumbnail((1100, 1100), Image.Resampling.LANCZOS)
         pixels = np.asarray(image)
     points, descriptors = cv2.SIFT_create(nfeatures=2500).detectAndCompute(pixels, None)
@@ -304,14 +313,15 @@ def run():
                 request_json(f'{API}/{BASE}/{TABLE}/' + row['id'], headers(), {'fields': updates})
                 print(f"{row['id']}: artiste et titre vérifiés dans les champs structurés", flush=True)
             continue
-        candidates = json.loads(f.get('Candidats Discogs') or '[]')
+        rejected = rejected_references(f.get('Transcription source', ''))
+        candidates = [c for c in json.loads(f.get('Candidats Discogs') or '[]') if str(c.get('release_id')) not in rejected]
         stamp = fingerprint(f)
         if not should_compare(f):
             continue
         match = re.search(r'fichier source: ([^\n]+)', f.get('Transcription source', ''))
         path = (ROOT / match[1]).resolve() if match else None
         if path and ROOT in path.parents and path.is_file():
-            photo = features(path.read_bytes())
+            photo = features(path.read_bytes(), foreground=True)
         else:
             attachments = f.get('Photos personnelles') or []
             if not attachments:
@@ -322,7 +332,7 @@ def run():
                 photo_data=response.read(20_000_001)
             if len(photo_data)>20_000_000:
                 raise ValueError('Photo trop volumineuse')
-            photo=features(photo_data)
+            photo=features(photo_data, foreground=True)
         chosen = []
         album_counts = {}
         urls = set()
@@ -372,7 +382,7 @@ def run():
             region_match = re.search(r'\[OCR neural regions\] ([^\n]+)', source)
             heading_query = ''
             if region_match:
-                primary_regions = sorted(json.loads(region_match[1]), key=lambda r: r['height'], reverse=True)[:4]
+                primary_regions = sorted([r for r in json.loads(region_match[1]) if useful_region(r) and r.get('confidence', 0) >= .2], key=lambda r: r['height'], reverse=True)[:6]
                 primary_text = ' '.join(r['text'] for r in primary_regions)
                 primary_text = re.sub(r'\b([A-Z])(?=[A-Z][a-z])', r'\1 ', primary_text)
                 primary_tokens = [w for w in words(primary_text.replace('@','O')) if len(w)>=3 and w not in {'THE','AND','WITH','STEREO','MONO'}]
@@ -425,7 +435,7 @@ def run():
                     if score:
                         scores.append((score, c))
             print(f"{row['id']}: {len(chosen)} versions et {len(master_candidates)} albums comparés", flush=True)
-        scores = [(score,candidate) for score,candidate in scores if printed_number_matches(f,candidate)]
+        scores = [(score,candidate) for score,candidate in scores if str(candidate.get('release_id')) not in rejected and printed_number_matches(f,candidate)]
         if scores:
             heading=main_heading(f,[candidate for score,candidate in scores])
             if heading:
@@ -463,7 +473,7 @@ def run():
             updates.update(reset_reference(f))
             updates.update(canonical)
             artist, title = canonical['Artiste'], canonical['Titre']
-            updates.update({'Transcription source': f.get('Transcription source', '') + ('\n[Identité visuelle vérifiée]' if scores[0][0] else '\n[Titre principal vérifié]') + '\n' + canonical_marker(matches[0]), 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
+            updates.update({'Transcription source': clear_identity_markers(f.get('Transcription source', '')) + ('\n[Identité visuelle vérifiée]' if scores[0][0] else '\n[Titre principal vérifié]') + '\n' + canonical_marker(matches[0]), 'Artiste': artist, 'Titre': album_title(title), 'Candidats Discogs': json.dumps(matches, ensure_ascii=False),
                 'Diagnostic': (f'Album reconnu automatiquement par correspondances géométriques des pochettes ({scores[0][0]} points concordants); pressage précis non attribué.' if scores[0][0] else 'Album reconnu automatiquement par le titre principal imprimé et son artiste ou son volume; référence Discogs concordante, pressage précis non attribué.')})
             print(f"{row['id']}: album reconnu " + (f"par image ({scores[0][0]} points)" if scores[0][0] else 'par titre principal imprimé'), flush=True)
         elif unavailable:
