@@ -189,14 +189,14 @@ def main():
                 existing[pos] = repaired
                 updated += 1
             old = repaired
-            if bac == 'B-08' or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v'):
+            if synced(bac) or r.get('Photos personnelles') or r.get('Enrichissement automatique', '').startswith('metadata-v'):
                 metadata = {name: item[name] for name in ('t', 'a', 'k', 'vs', 'y', 'f', 'r', 'd', 'n', 'v', 'm', 'x', 'h', 'w', 'no', 'ev', 'fa', 'fp', 'pa', 'dc', 'album', 'np', 'indicatif', 'sourcePrix', 'technique', 'historique')}
                 if r.get('Famille'):
                     metadata['f'] = r['Famille']
                 metadata.update({'s': r.get('Statut', ''), 'diag': r.get('Enrichissement automatique') or r.get('Diagnostic', ''), 'photo': personal})
                 if cover:
                     metadata.update({'th': cover, 'rc': cover})
-                if bac != 'B-08':
+                if not synced(bac):
                     metadata = {k: v for k, v in metadata.items() if v is not None and v != '' and v != []}
                 fresh = {**old, **metadata}
                 if fresh != old:
@@ -223,6 +223,14 @@ def main():
     SITE.write_text(rebuilt, encoding="utf-8")
     print(f"Publication : {len(added)} ajouts, {updated} mises à jour B-08, {len(removed)} suppressions B-08. Les autres bacs conservés.")
     return 0
+
+def synced(bac):
+    """Bacs B-08 et suivants : Airtable fait foi, un champ vidé disparaît aussi du site.
+    Les bacs B-01 à B-07 (publiés par l'ancienne chaîne) gardent les valeurs historiques."""
+    try:
+        return int(str(bac).split('-')[-1]) >= 8
+    except ValueError:
+        return False
 
 if __name__ == "__main__":
     sys.exit(main())
