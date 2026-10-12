@@ -237,7 +237,9 @@ def physical_format(release):
     if '78 RPM' in desc: return '78 tours'
     if '10"' in desc: return '10 pouces'
     vinyl = [f for f in formats if f.get('name') == 'Vinyl']
-    if any(str(f.get('qty')) == '2' for f in vinyl): return 'Double album'
+    qty = max([int(f.get('qty') or 1) for f in vinyl] or [1])
+    if qty >= 3: return 'Coffret'
+    if qty == 2: return 'Double album'
     if '45 RPM' in desc: return 'Maxi 12 pouces' if '12"' in desc else '45 tours'
     if 'LP' in desc or '33 ⅓ RPM' in desc: return '33 tours'
     return None
@@ -357,12 +359,14 @@ def metadata(f, release, headers, cache):
     # Convention B-01 à B-07 : Label et Année viennent de la version de référence, confirmée ou non.
     if not f.get('Label') and release.get('labels'): out['Label'] = clean_name(release['labels'][0].get('name'))
     if release.get('year') and not f.get('Année'): out['Année'] = release['year']
+    # Axes de classement (convention B-01 à B-07) : depuis la version de référence, confirmée ou non.
+    if release.get('country') and not f.get('Pays du pressage'): out['Pays du pressage'] = release['country']
+    fmt = physical_format(release)
+    if fmt and not f.get('Format physique'): out['Format physique'] = fmt
+    year = f.get('Année') or out.get('Année') or release.get('year')
+    if year and 1940 <= int(year) < 2030 and not f.get('Décennie du pressage'): out['Décennie du pressage'] = str(int(year)//10*10)
     if confirmed:
-        if release.get('country') and not f.get('Pays du pressage'): out['Pays du pressage'] = release['country']
-        fmt = physical_format(release)
-        if fmt and not f.get('Format physique'): out['Format physique'] = fmt
-        year = f.get('Année') or release.get('year')
-        if year and 1940 <= int(year) < 2030 and not f.get('Décennie du pressage'): out['Décennie du pressage'] = str(int(year)//10*10)
+        pass
     community = release.get('community', {})
     for field, value in [('Possédé par (Discogs)',community.get('have')),('Recherché par (Discogs)',community.get('want')),('Note Discogs (sur 5)',community.get('rating',{}).get('average')),('Nombre de notes (Discogs)',community.get('rating',{}).get('count')),('Exemplaires en vente (Discogs)',release.get('num_for_sale'))]:
         if value is not None: out[field] = value

@@ -7,7 +7,7 @@ il relit chaque référence Discogs. Les fiches gelées (Ne pas retraiter) ne so
 import os
 import urllib.parse
 
-from completer_metadonnees import request_json, classification, clean_name, API, BASE, TABLE, RID
+from completer_metadonnees import request_json, classification, clean_name, physical_format, API, BASE, TABLE, RID
 
 
 def bac_number(code):
@@ -54,6 +54,14 @@ def main():
                 updates['Label'] = clean_name(release['labels'][0].get('name'))
             if not f.get('Année') and release.get('year'):
                 updates['Année'] = release['year']
+            if not f.get('Pays du pressage') and release.get('country'):
+                updates['Pays du pressage'] = release['country']
+            fmt = physical_format(release)
+            if fmt and not f.get('Format physique'):
+                updates['Format physique'] = fmt
+            year = f.get('Année') or updates.get('Année')
+            if year and 1940 <= int(year) < 2030 and not f.get('Décennie du pressage'):
+                updates['Décennie du pressage'] = str(int(year) // 10 * 10)
             if updates:
                 if os.getenv('DRY_RUN', '0') != '1':
                     request_json(endpoint + '/' + row['id'], at, {'fields': updates, 'typecast': True})
