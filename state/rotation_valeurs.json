@@ -1,11 +1,11 @@
 {
- "passage": "2026-10-18T23:09:08-04:00",
+ "passage": "2026-10-19T04:52:52-04:00",
  "disques_suivis": 289,
  "jamais_releves": 0,
- "age_median_jours": 1,
- "age_max_jours": 2,
+ "age_median_jours": 2,
+ "age_max_jours": 3,
  "plus_de_7_jours": 0,
- "prioritaires_en_attente": 0,
- "releves_ce_passage": 15,
+ "prioritaires_en_attente": 2,
+ "releves_ce_passage": 17,
  "erreurs": 0
 }
